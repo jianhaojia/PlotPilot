@@ -1,8 +1,7 @@
 """Statistics data models tests."""
 import pytest
 from datetime import datetime
-from pydantic import ValidationError, BaseModel
-from typing import Dict
+from pydantic import ValidationError
 
 
 class TestGlobalStatsBasic:
@@ -148,6 +147,24 @@ class TestBookStatsBasic:
             )
         assert "completion_rate" in str(exc_info.value)
 
+    def test_book_stats_cross_field_validation(self):
+        """Test BookStats cross-field validation."""
+        from aitext.web.models.stats_models import BookStats
+
+        # Test with completed_chapters > total_chapters (should fail)
+        with pytest.raises(ValidationError) as exc_info:
+            BookStats(
+                slug="test-book",
+                title="Test Book",
+                total_chapters=10,
+                completed_chapters=15,
+                total_words=50000,
+                avg_chapter_words=5000,
+                completion_rate=1.0,
+                last_updated=datetime(2024, 3, 15, 12, 0)
+            )
+        assert "completed_chapters" in str(exc_info.value)
+
 
 class TestChapterStatsBasic:
     """Test ChapterStats model basic functionality."""
@@ -240,6 +257,46 @@ class TestChapterStatsBasic:
                 character_count=16000,
                 paragraph_count=-1,
                 has_content=True
+            )
+        assert "paragraph_count" in str(exc_info.value)
+
+    def test_chapter_stats_cross_field_validation(self):
+        """Test ChapterStats cross-field validation."""
+        from aitext.web.models.stats_models import ChapterStats
+
+        # Test with has_content=False but non-zero word_count (should fail)
+        with pytest.raises(ValidationError) as exc_info:
+            ChapterStats(
+                chapter_id=1,
+                title="Invalid Chapter",
+                word_count=100,
+                character_count=0,
+                paragraph_count=0,
+                has_content=False
+            )
+        assert "word_count" in str(exc_info.value)
+
+        # Test with has_content=False but non-zero character_count (should fail)
+        with pytest.raises(ValidationError) as exc_info:
+            ChapterStats(
+                chapter_id=1,
+                title="Invalid Chapter",
+                word_count=0,
+                character_count=100,
+                paragraph_count=0,
+                has_content=False
+            )
+        assert "character_count" in str(exc_info.value)
+
+        # Test with has_content=False but non-zero paragraph_count (should fail)
+        with pytest.raises(ValidationError) as exc_info:
+            ChapterStats(
+                chapter_id=1,
+                title="Invalid Chapter",
+                word_count=0,
+                character_count=0,
+                paragraph_count=5,
+                has_content=False
             )
         assert "paragraph_count" in str(exc_info.value)
 

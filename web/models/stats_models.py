@@ -1,7 +1,7 @@
 """Statistics data models for tracking writing progress and content analysis."""
 from typing import Dict
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class GlobalStats(BaseModel):
@@ -43,6 +43,13 @@ class BookStats(BaseModel):
     completion_rate: float = Field(ge=0.0, le=1.0)
     last_updated: datetime
 
+    @model_validator(mode='after')
+    def validate_chapter_counts(self) -> 'BookStats':
+        """Ensure completed_chapters does not exceed total_chapters."""
+        if self.completed_chapters > self.total_chapters:
+            raise ValueError(f"completed_chapters ({self.completed_chapters}) cannot exceed total_chapters ({self.total_chapters})")
+        return self
+
 
 class ChapterStats(BaseModel):
     """Statistics for a specific chapter.
@@ -61,6 +68,18 @@ class ChapterStats(BaseModel):
     character_count: int = Field(ge=0)
     paragraph_count: int = Field(ge=0)
     has_content: bool
+
+    @model_validator(mode='after')
+    def validate_content_counts(self) -> 'ChapterStats':
+        """Ensure if has_content is False, all content counts are 0."""
+        if not self.has_content:
+            if self.word_count != 0:
+                raise ValueError(f"word_count must be 0 when has_content is False, got {self.word_count}")
+            if self.character_count != 0:
+                raise ValueError(f"character_count must be 0 when has_content is False, got {self.character_count}")
+            if self.paragraph_count != 0:
+                raise ValueError(f"paragraph_count must be 0 when has_content is False, got {self.paragraph_count}")
+        return self
 
 
 class WritingProgress(BaseModel):
