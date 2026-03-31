@@ -19,3 +19,11 @@ sys.path.insert(0, _root_str)
 # Re-add parent at the end if needed (for aitext package)
 if _parent_str not in sys.path:
     sys.path.append(_parent_str)
+
+
+def pytest_configure(config):
+    """Ensure paths are set before test collection"""
+    # Double-check that project root is first in sys.path
+    if _root_str in sys.path:
+        sys.path.remove(_root_str)
+    sys.path.insert(0, _root_str)

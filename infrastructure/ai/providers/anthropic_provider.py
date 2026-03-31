@@ -43,23 +43,57 @@ class AnthropicProvider(BaseProvider):
 
         Returns:
             生成结果
+
+        Raises:
+            RuntimeError: 当 API 调用失败或返回空内容时
         """
-        # 调用 Anthropic API
-        response = self.client.messages.create(
-            model=config.model,
-            temperature=config.temperature,
-            max_tokens=config.max_tokens,
-            system=prompt.system,
-            messages=prompt.to_messages()
-        )
+        try:
+            # 调用 Anthropic API
+            response = self.client.messages.create(
+                model=config.model,
+                temperature=config.temperature,
+                max_tokens=config.max_tokens,
+                system=prompt.system,
+                messages=prompt.to_messages()
+            )
 
-        # 提取响应内容
-        content = response.content[0].text
+            # 防御性检查：验证 content 列表非空
+            if not response.content:
+                raise RuntimeError("API returned empty content")
 
-        # 创建 token 使用统计
-        token_usage = TokenUsage(
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens
-        )
+            # 提取响应内容
+            content = response.content[0].text
 
-        return GenerationResult(content=content, token_usage=token_usage)
+            # 创建 token 使用统计
+            token_usage = TokenUsage(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens
+            )
+
+            return GenerationResult(content=content, token_usage=token_usage)
+
+        except RuntimeError:
+            # 重新抛出我们自己的异常
+            raise
+        except Exception as e:
+            # 转换第三方异常为通用异常，避免暴露实现细节
+            raise RuntimeError(f"Failed to generate text: {str(e)}") from e
+
+    async def stream_generate(
+        self,
+        prompt: Prompt,
+        config: GenerationConfig
+    ) -> AsyncIterator[str]:
+        """流式生成内容
+
+        Args:
+            prompt: 提示词
+            config: 生成配置
+
+        Yields:
+            生成的文本片段
+
+        Raises:
+            NotImplementedError: 流式生成暂未实现
+        """
+        raise NotImplementedError("Stream generation not yet implemented")

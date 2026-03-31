@@ -1,6 +1,6 @@
 """AnthropicProvider 测试"""
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 from domain.ai.value_objects.prompt import Prompt
 from domain.ai.value_objects.token_usage import TokenUsage
 from domain.ai.services.llm_service import GenerationConfig
@@ -78,15 +78,42 @@ class TestAnthropicProvider:
             assert call_kwargs['max_tokens'] == 2048
 
     @pytest.mark.asyncio
-    async def test_generate_error_handling(self, provider):
-        """测试错误处理"""
+    async def test_generate_empty_content(self, provider):
+        """测试 API 返回空 content"""
         prompt = Prompt(system="You are helpful", user="Hello")
         config = GenerationConfig()
 
         with patch.object(provider.client.messages, 'create') as mock_create:
-            mock_create.side_effect = Exception("API Error")
+            mock_create.return_value = Mock(
+                content=[],
+                usage=Mock(input_tokens=10, output_tokens=5)
+            )
 
-            with pytest.raises(Exception, match="API Error"):
+            with pytest.raises(RuntimeError, match="empty content"):
+                await provider.generate(prompt, config)
+
+    @pytest.mark.asyncio
+    async def test_generate_api_error(self, provider):
+        """测试 API 错误转换"""
+        prompt = Prompt(system="You are helpful", user="Hello")
+        config = GenerationConfig()
+
+        with patch.object(provider.client.messages, 'create') as mock_create:
+            mock_create.side_effect = Exception("Anthropic API Error")
+
+            with pytest.raises(RuntimeError, match="Failed to generate text"):
+                await provider.generate(prompt, config)
+
+    @pytest.mark.asyncio
+    async def test_generate_network_error(self, provider):
+        """测试网络错误处理"""
+        prompt = Prompt(system="You are helpful", user="Hello")
+        config = GenerationConfig()
+
+        with patch.object(provider.client.messages, 'create') as mock_create:
+            mock_create.side_effect = ConnectionError("Network unreachable")
+
+            with pytest.raises(RuntimeError, match="Failed to generate text"):
                 await provider.generate(prompt, config)
 
     def test_missing_api_key(self):
