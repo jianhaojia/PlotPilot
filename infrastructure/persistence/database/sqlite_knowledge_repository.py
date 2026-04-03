@@ -50,7 +50,8 @@ class SqliteKnowledgeRepository:
         # 获取三元组
         triples_sql = """
             SELECT id, subject, predicate, object, chapter_id, note,
-                   entity_type, importance, location_type
+                   entity_type, importance, location_type,
+                   description, first_appearance, related_chapters, tags, attributes
             FROM triples
             WHERE novel_id = ?
             ORDER BY created_at ASC
@@ -67,6 +68,7 @@ class SqliteKnowledgeRepository:
         summaries_rows = self.db.fetch_all(summaries_sql, (knowledge['id'],))
 
         # 转换为领域对象
+        import json
         facts = [
             KnowledgeTriple(
                 id=row['id'],
@@ -77,7 +79,12 @@ class SqliteKnowledgeRepository:
                 note=row['note'] or "",
                 entity_type=row.get('entity_type'),
                 importance=row.get('importance'),
-                location_type=row.get('location_type')
+                location_type=row.get('location_type'),
+                description=row.get('description'),
+                first_appearance=row.get('first_appearance'),
+                related_chapters=json.loads(row.get('related_chapters') or '[]'),
+                tags=json.loads(row.get('tags') or '[]'),
+                attributes=json.loads(row.get('attributes') or '{}')
             )
             for row in triples_rows
         ]
@@ -105,10 +112,13 @@ class SqliteKnowledgeRepository:
 
     def save_triple(self, novel_id: str, triple: dict) -> None:
         """保存单个三元组"""
+        import json
         sql = """
             INSERT INTO triples (id, novel_id, subject, predicate, object, chapter_id, note,
-                                entity_type, importance, location_type, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                entity_type, importance, location_type,
+                                description, first_appearance, related_chapters, tags, attributes,
+                                created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 subject = excluded.subject,
                 predicate = excluded.predicate,
@@ -118,6 +128,11 @@ class SqliteKnowledgeRepository:
                 entity_type = excluded.entity_type,
                 importance = excluded.importance,
                 location_type = excluded.location_type,
+                description = excluded.description,
+                first_appearance = excluded.first_appearance,
+                related_chapters = excluded.related_chapters,
+                tags = excluded.tags,
+                attributes = excluded.attributes,
                 updated_at = excluded.updated_at
         """
         now = datetime.utcnow().isoformat()
@@ -132,6 +147,11 @@ class SqliteKnowledgeRepository:
             triple.get('entity_type'),
             triple.get('importance'),
             triple.get('location_type'),
+            triple.get('description'),
+            triple.get('first_appearance'),
+            json.dumps(triple.get('related_chapters', [])),
+            json.dumps(triple.get('tags', [])),
+            json.dumps(triple.get('attributes', {})),
             now,
             now
         ))
@@ -260,8 +280,9 @@ class SqliteKnowledgeRepository:
                 logger.info(f"Inserting triple: {triple['id']} - {triple['subject']}")
                 conn.execute("""
                     INSERT INTO triples (id, novel_id, subject, predicate, object, chapter_id, note,
-                                        created_at, updated_at, entity_type, importance, location_type)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        created_at, updated_at, entity_type, importance, location_type,
+                                        description, first_appearance, related_chapters, tags, attributes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         subject = excluded.subject,
                         predicate = excluded.predicate,
@@ -271,6 +292,11 @@ class SqliteKnowledgeRepository:
                         entity_type = excluded.entity_type,
                         importance = excluded.importance,
                         location_type = excluded.location_type,
+                        description = excluded.description,
+                        first_appearance = excluded.first_appearance,
+                        related_chapters = excluded.related_chapters,
+                        tags = excluded.tags,
+                        attributes = excluded.attributes,
                         updated_at = excluded.updated_at
                 """, (
                     triple['id'],
@@ -284,7 +310,12 @@ class SqliteKnowledgeRepository:
                     now,
                     triple.get('entity_type'),
                     triple.get('importance'),
-                    triple.get('location_type')
+                    triple.get('location_type'),
+                    triple.get('description'),
+                    triple.get('first_appearance'),
+                    json.dumps(triple.get('related_chapters', [])),
+                    json.dumps(triple.get('tags', [])),
+                    json.dumps(triple.get('attributes', {}))
                 ))
 
             # 4. 删除旧的章节摘要

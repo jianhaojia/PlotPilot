@@ -78,7 +78,12 @@ class KnowledgeService:
                 note=fact.get("note", ""),
                 entity_type=fact.get("entity_type"),
                 importance=fact.get("importance"),
-                location_type=fact.get("location_type")
+                location_type=fact.get("location_type"),
+                description=fact.get("description"),
+                first_appearance=fact.get("first_appearance"),
+                related_chapters=fact.get("related_chapters", []),
+                tags=fact.get("tags", []),
+                attributes=fact.get("attributes", {})
             )
             for fact in data.get("facts", [])
         ]

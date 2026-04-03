@@ -68,7 +68,12 @@ async def get_knowledge(
                 note=fact.note,
                 entity_type=fact.entity_type,
                 importance=fact.importance,
-                location_type=fact.location_type
+                location_type=fact.location_type,
+                description=fact.description,
+                first_appearance=fact.first_appearance,
+                related_chapters=fact.related_chapters,
+                tags=fact.tags,
+                attributes=fact.attributes
             )
             for fact in knowledge.facts
         ]
@@ -136,7 +141,12 @@ async def update_knowledge(
                 note=fact.note,
                 entity_type=fact.entity_type,
                 importance=fact.importance,
-                location_type=fact.location_type
+                location_type=fact.location_type,
+                description=fact.description,
+                first_appearance=fact.first_appearance,
+                related_chapters=fact.related_chapters,
+                tags=fact.tags,
+                attributes=fact.attributes
             )
             for fact in knowledge.facts
         ]

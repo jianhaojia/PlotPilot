@@ -12,7 +12,7 @@ from infrastructure.persistence.database.connection import DatabaseConnection
 
 def migrate():
     """执行迁移"""
-    db = DatabaseConnection()
+    db = DatabaseConnection("data/aitext.db")
     conn = db.get_connection()
     cursor = conn.cursor()
 

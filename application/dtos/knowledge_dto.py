@@ -1,5 +1,5 @@
 """Knowledge DTOs"""
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -25,6 +25,11 @@ class KnowledgeTripleDTO(BaseModel):
     entity_type: Optional[str] = Field(default=None, description="实体类型 (character|location)")
     importance: Optional[str] = Field(default=None, description="重要程度")
     location_type: Optional[str] = Field(default=None, description="地点类型 (city|region|building|faction|realm)")
+    description: Optional[str] = Field(default=None, description="实体详细描述")
+    first_appearance: Optional[int] = Field(default=None, description="首次出现章节号")
+    related_chapters: List[int] = Field(default_factory=list, description="相关章节列表")
+    tags: List[str] = Field(default_factory=list, description="标签列表")
+    attributes: Dict[str, Any] = Field(default_factory=dict, description="额外属性")
 
 
 class StoryKnowledgeDTO(BaseModel):
