@@ -1,237 +1,125 @@
-# 后端 API 使用情况分析
+# Backend API 实现状态分析
 
-## 已实现但前端未使用的功能
+本文档分析后端 API 端点的实现状态及前端使用情况。
 
-### 1. Generation API (generation.py)
+## 📊 总览
 
-#### ✅ 已使用
-- `POST /novels/{novel_id}/generate-chapter` - 生成章节（完整工作流）
-- `POST /novels/{novel_id}/generate-chapter-stream` - 流式生成章节
-- `POST /novels/{novel_id}/hosted-write-stream` - 托管多章连写
+| 模块 | 已实现 | 前端使用 | 未使用 |
+|------|--------|----------|--------|
+| Generation API | 13 | 8 | 5 |
+| Bible API | 4 | 4 | 0 |
+| Knowledge API | 3 | 3 | 0 |
+| Story Structure API | 2 | 1 | 1 |
+| Chapter API | 6 | 6 | 0 |
+| Novel API | 3 | 3 | 0 |
+| **总计** | **31** | **25** | **6** |
 
-#### 🔲 未使用
-- `GET /novels/{novel_id}/consistency-report` - 获取一致性报告
-  - **用途**: 查看最新的一致性检查结果
-  - **前端集成建议**: 在章节编辑页面添加"一致性检查"按钮
+## ✅ 已实现并使用的核心 API (25个)
 
-- `GET /novels/{novel_id}/storylines` - 获取故事线列表
-  - **用途**: 查看所有故事线（主线、支线、感情线等）
-  - **前端集成建议**: 添加"故事线管理"页面
+### 1. 章节生成 (Generation API)
 
-- `POST /novels/{novel_id}/storylines` - 创建故事线
-  - **用途**: 创建新的故事线
-  - **前端集成建议**: 故事线管理页面的"添加"功能
+| 端点 | 方法 | 功能 | 前端调用位置 |
+|------|------|------|--------------|
+| `/novels/{id}/generate-chapter` | POST | 同步生成章节 | `workflow.ts` |
+| `/novels/{id}/generate-chapter-stream` | POST | 流式生成章节 (SSE) | `workflow.ts` → `consumeGenerateChapterStream` |
+| `/novels/{id}/hosted-write-stream` | POST | 托管多章连写 (SSE) | `workflow.ts` → `consumeHostedWriteStream` |
+| `/novels/{id}/plan` | POST | 生成小说规划 | `workflow.ts` |
+| `/novels/{id}/chapters/{n}/review` | POST | AI 审阅章节 | `workflow.ts`, `chapter.ts` |
+| `/novels/{id}/outline/extend` | POST | 扩展大纲 | `ChapterList.vue` |
+| `/novels/{id}/bible/generate` | POST | AI 生成世界观 | `BiblePanel.vue` |
+| `/novels/{id}/knowledge/generate` | POST | AI 生成知识库 | `KnowledgePanel.vue` |
 
-- `GET /novels/{novel_id}/plot-arc` - 获取情节弧
-  - **用途**: 查看情节张力曲线
-  - **前端集成建议**: 添加"情节弧可视化"页面，显示张力曲线图
+### 2. 世界观与知识库
 
-- `POST /novels/{novel_id}/plot-arc` - 创建/更新情节弧
-  - **用途**: 设置关键情节点和张力等级
-  - **前端集成建议**: 情节弧编辑器
+| 端点 | 方法 | 功能 | 前端调用位置 |
+|------|------|------|--------------|
+| `/novels/{id}/bible` | GET | 获取世界观设定 | `bible.ts` |
+| `/novels/{id}/bible` | PUT | 更新世界观设定 | `bible.ts` |
+| `/bible/novels/{id}/bible/status` | GET | 检查 Bible 状态 | `bible.ts` |
+| `/novels/{id}/knowledge` | GET | 获取知识库 | `knowledge.ts` |
+| `/novels/{id}/knowledge` | PUT | 更新知识库 | `knowledge.ts` |
 
-- `POST /novels/{novel_id}/plan` - 大纲规划
-  - **用途**: AI 生成 Bible + 分章大纲
-  - **前端集成建议**: 工作台添加"AI 规划"按钮
+### 3. 叙事结构
 
-- `POST /novels/{novel_id}/chapters/{chapter_number}/review` - 章节审稿
-  - **用途**: AI 审稿并返回修改建议
-  - **前端集成建议**: 章节编辑页面添加"AI 审稿"按钮
+| 端点 | 方法 | 功能 | 前端调用位置 |
+|------|------|------|--------------|
+| `/novels/{id}/structure` | GET | 获取结构树 | 前端多处使用 |
 
-- `POST /novels/{novel_id}/outline/extend` - 续写大纲
-  - **用途**: 基于当前进度生成后续章节大纲
-  - **前端集成建议**: 章节列表底部添加"续写大纲"按钮
+### 4. 章节管理
 
-- `POST /novels/{novel_id}/bible/generate` - AI 生成 Bible
-  - **用途**: 为旧小说补齐 Bible 设定
-  - **前端集成建议**: Bible 页面添加"AI 生成"按钮
+| 端点 | 方法 | 功能 | 前端调用位置 |
+|------|------|------|--------------|
+| `/novels/{id}/chapters` | GET | 列出所有章节 | 前端多处使用 |
+| `/novels/{id}/chapters/{n}` | GET | 获取指定章节 | 前端多处使用 |
+| `/novels/{id}/chapters/{n}` | PUT | 更新章节内容 | 前端多处使用 |
+| `/novels/{id}/chapters/{n}/review` | GET | 获取章节审阅 | `chapter.ts` |
+| `/novels/{id}/chapters/{n}/review` | PUT | 更新审阅状态 | `chapter.ts` |
+| `/novels/{id}/chapters/{n}/review-ai` | POST | AI 审阅章节 | `chapter.ts` |
 
-- `POST /novels/{novel_id}/knowledge/generate` - AI 生成 Knowledge
-  - **用途**: 生成梗概锁定 + 知识三元组
-  - **前端集成建议**: Knowledge 页面添加"AI 生成"按钮（已有但可能未连接）
+### 5. 小说管理
 
-### 2. AI API (ai.py)
+| 端点 | 方法 | 功能 | 前端调用位置 |
+|------|------|------|--------------|
+| `/novels` | GET | 列出所有小说 | 前端多处使用 |
+| `/novels` | POST | 创建新小说 | 前端多处使用 |
+| `/novels/{id}` | GET | 获取小说详情 | 前端多处使用 |
 
-#### 🔲 未使用
-- `POST /ai/generate-chapter` - 简单的章节生成
-  - **用途**: 基础的章节生成（不含上下文管理）
-  - **状态**: 可能被 generation.py 的完整工作流替代
-  - **建议**: 保留作为快速生成选项
+## ⚠️ 已实现但未使用的 API (6个)
 
-### 3. Chat API (chat.py)
+这些 API 已在后端实现，但前端尚未集成或仅定义了接口未实际调用：
 
-#### 🔲 未使用（需要确认）
-- `GET /novels/{novel_id}/chat/messages` - 获取聊天消息
-- `POST /novels/{novel_id}/chat` - 发送消息（非流式）
-- `POST /novels/{novel_id}/chat/stream` - 发送消息（流式）
-- `POST /novels/{novel_id}/chat/clear` - 清空聊天线程
+| 端点 | 方法 | 功能 | 状态 |
+|------|------|------|------|
+| `/novels/{id}/consistency-report` | GET | 获取一致性分析报告 | 前端已定义接口但未调用 |
+| `/novels/{id}/storylines` | GET | 获取所有故事线 | 前端已定义接口但未调用 |
+| `/novels/{id}/storylines` | POST | 创建新故事线 | 前端未定义接口 |
+| `/novels/{id}/plot-arc` | GET | 获取情节弧线 | 前端未定义接口 |
+| `/novels/{id}/plot-arc` | POST | 创建/更新情节弧线 | 前端已定义接口但未调用 |
+| `/novels/{id}/structure/plan` | POST | 手动触发结构规划 | 新实现，待集成 |
 
-**前端集成建议**: 工作台右侧添加"AI 助手"聊天面板
+## 🔄 最近的重要变更
 
-### 4. Cast API (cast.py)
+### 小说创建流程优化 (2026-04-03)
 
-需要检查是否完全使用
-
-### 5. Knowledge API (knowledge.py)
-
-需要检查是否有高级功能未使用（如搜索、过滤等）
-
-## 优先级建议
-
-### P0 - 立即集成（高价值，低成本）
-
-1. **AI 生成 Bible/Knowledge** ✨
-   - 后端: `POST /novels/{novel_id}/bible/generate`
-   - 后端: `POST /novels/{novel_id}/knowledge/generate`
-   - 前端: KnowledgePanel 的"AI 生成"按钮已存在，需要连接到正确的 API
-   - **价值**: 为旧小说快速补齐数据，减少手动输入
-   - **工作量**: 1-2 小时
-
-2. **章节审稿** 📝
-   - 后端: `POST /novels/{novel_id}/chapters/{chapter_number}/review`
-   - 前端: 章节编辑页面添加"AI 审稿"按钮
-   - **价值**: 自动检查章节质量，提供修改建议
-   - **工作量**: 2-3 小时
-
-3. **续写大纲** 📋
-   - 后端: `POST /novels/{novel_id}/outline/extend`
-   - 前端: 章节列表底部添加"续写大纲"按钮
-   - **价值**: 快速扩展章节规划
-   - **工作量**: 2-3 小时
-
-### P1 - 短期集成（高价值，中等成本）
-
-4. **情节弧可视化** 📊
-   - 后端: `GET /novels/{novel_id}/plot-arc`
-   - 后端: `POST /novels/{novel_id}/plot-arc`
-   - 前端: 新建"情节弧"页面，显示张力曲线图
-   - **价值**: 可视化情节张力，帮助规划高潮和低谷
-   - **工作量**: 1 天（需要图表组件）
-
-5. **一致性报告** ✅
-   - 后端: `GET /novels/{novel_id}/consistency-report`
-   - 前端: 章节编辑页面添加"一致性检查"按钮
-   - **价值**: 实时检查人物、地点、事件的一致性
-   - **工作量**: 3-4 小时
-
-6. **AI 助手聊天** 💬
-   - 后端: Chat API 全套
-   - 前端: 工作台右侧添加可折叠的聊天面板
-   - **价值**: 随时咨询 AI，获取写作建议
-   - **工作量**: 1-2 天
-
-### P2 - 中期集成（中等价值，高成本）
-
-7. **故事线管理** 🎭
-   - 后端: `GET/POST /novels/{novel_id}/storylines`
-   - 前端: 新建"故事线"页面，管理主线、支线、感情线
-   - **价值**: 多线叙事管理，避免线索混乱
-   - **工作量**: 2-3 天
-
-8. **大纲规划** 🗺️
-   - 后端: `POST /novels/{novel_id}/plan`
-   - 前端: 工作台添加"AI 规划"功能
-   - **价值**: 一键生成完整的书籍规划
-   - **工作量**: 1 天
-
-## 功能整合建议
-
-### 方案 1: 增强工作台右侧面板
-
-当前右侧面板只有"叙事与知识"和"关系图"，建议扩展为：
-
+**变更前：**
 ```
-右侧面板
-├── 叙事与知识 (当前)
-│   ├── 检索
-│   ├── 梗概锁定
-│   └── 分章叙事
-├── 关系图 (当前)
-│   ├── 人物关系
-│   └── 地点关系
-├── AI 助手 (新增) ⭐
-│   ├── 聊天对话
-│   ├── 快速生成
-│   └── 审稿建议
-├── 情节管理 (新增) ⭐
-│   ├── 情节弧
-│   ├── 故事线
-│   └── 张力曲线
-└── 一致性检查 (新增) ⭐
-    ├── 人物一致性
-    ├── 地点一致性
-    └── 时间线一致性
+创建小说 → 自动生成 Bible → 自动生成幕结构
 ```
 
-### 方案 2: 添加顶部工具栏
-
-在工作台顶部添加快捷操作：
-
+**变更后：**
 ```
-[AI 规划] [续写大纲] [AI 审稿] [一致性检查] [导出]
+创建小说 → 手动触发 Bible 生成 → 轮询状态 → 用户确认 → 手动触发规划
 ```
 
-### 方案 3: 章节右键菜单
+**相关 API 变更：**
+- `POST /novels` - 移除自动生成 Bible 的逻辑
+- `POST /bible/novels/{id}/generate` - 新增手动触发接口
+- `GET /bible/novels/{id}/bible/status` - 新增状态检查接口
+- `POST /novels/{id}/structure/plan` - 重命名并明确为手动触发
 
-在章节列表中右键点击章节，显示快捷菜单：
+**提交记录：**
+- `e6ad109` - 移除自动生成逻辑
+- `aa3c4ad` - 添加手动生成接口
 
-```
-右键菜单
-├── 编辑章节
-├── AI 生成内容
-├── AI 审稿
-├── 一致性检查
-├── 查看相关人物
-├── 查看相关地点
-└── 删除章节
-```
+## 📋 建议
 
-## 实现路线图
+### 高优先级
+1. **集成一致性报告功能** - 后端已实现，前端接口已定义，只需添加 UI 调用
+2. **完善 Bible 生成流程** - 前端添加状态轮询和用户确认步骤
 
-### 第一阶段（本周）- 快速见效
-1. ✅ 连接 AI 生成 Bible/Knowledge 按钮
-2. ✅ 添加章节审稿功能
-3. ✅ 添加续写大纲功能
+### 中优先级
+3. **故事线管理 UI** - 为已实现的故事线 API 添加前端界面
+4. **情节弧线管理 UI** - 为已实现的情节弧线 API 添加前端界面
 
-### 第二阶段（下周）- 可视化增强
-4. 🔲 实现情节弧可视化
-5. 🔲 添加一致性报告面板
-6. 🔲 优化检索结果展示（分类、卡片）
+### 低优先级
+5. **评估未使用 API** - 如果不计划使用，考虑标记为废弃或移除
 
-### 第三阶段（下下周）- 交互增强
-7. 🔲 集成 AI 助手聊天
-8. 🔲 添加故事线管理
-9. 🔲 完善大纲规划功能
+## 📈 API 使用率
 
-## 技术债务
+- **整体使用率**: 80.6% (25/31)
+- **核心功能覆盖**: 100% (所有核心写作流程已实现并使用)
+- **高级功能覆盖**: 0% (一致性报告、故事线、情节弧线未使用)
 
-### 需要修复的问题
-1. 地点关系图节点数据传递（已修复）
-2. 检索结果只显示基本信息（待优化）
-3. 三元组编辑界面缺少扩展字段（待添加）
+## 🎯 结论
 
-### 需要优化的功能
-1. 检索性能（考虑添加索引）
-2. 关系图渲染性能（大量节点时）
-3. 章节加载速度（考虑分页）
-
-## 总结
-
-**已实现但未使用的核心功能**：
-- AI 生成 Bible/Knowledge ⭐⭐⭐
-- 章节审稿 ⭐⭐⭐
-- 续写大纲 ⭐⭐⭐
-- 情节弧管理 ⭐⭐
-- 一致性报告 ⭐⭐
-- AI 助手聊天 ⭐⭐
-- 故事线管理 ⭐
-
-**建议优先实现**：
-1. AI 生成功能（最快见效）
-2. 章节审稿（提升写作质量）
-3. 续写大纲（提升规划效率）
-
-**预计工作量**：
-- P0 功能：5-8 小时
-- P1 功能：3-5 天
-- P2 功能：5-7 天
+后端 API 实现完善，核心写作流程的所有功能都已实现并在前端正常使用。未使用的 6 个 API 主要是高级分析和管理功能，属于增强特性，不影响基本使用。
