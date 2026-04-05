@@ -19,7 +19,9 @@ class StorylineManager:
         novel_id: NovelId,
         storyline_type: StorylineType,
         estimated_chapter_start: int,
-        estimated_chapter_end: int
+        estimated_chapter_end: int,
+        name: str = "",
+        description: str = "",
     ) -> Storyline:
         """创建新的故事线
 
@@ -28,6 +30,8 @@ class StorylineManager:
             storyline_type: 故事线类型
             estimated_chapter_start: 预计开始章节
             estimated_chapter_end: 预计结束章节
+            name: 显示名称（可选）
+            description: 详细说明（可选）
 
         Returns:
             创建的故事线实体
@@ -39,7 +43,9 @@ class StorylineManager:
             storyline_type=storyline_type,
             status=StorylineStatus.ACTIVE,
             estimated_chapter_start=estimated_chapter_start,
-            estimated_chapter_end=estimated_chapter_end
+            estimated_chapter_end=estimated_chapter_end,
+            name=name or "",
+            description=description or "",
         )
 
         self.repository.save(storyline)

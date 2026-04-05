@@ -204,6 +204,29 @@ def get_hosted_write_service() -> HostedWriteService:
     return HostedWriteService(get_auto_workflow(), get_chapter_service(), get_novel_service())
 
 
+def get_llm_service():
+    """获取 LLM 服务实例（有 API Key 用 Anthropic，否则 Mock）。供多模块复用。"""
+    settings = _anthropic_settings(require_key=False)
+    if settings:
+        return AnthropicProvider(settings)
+    from infrastructure.ai.providers.mock_provider import MockProvider
+
+    return MockProvider()
+
+
+def get_setup_main_plot_suggestion_service():
+    """向导 Step 4：主线候选推演服务。"""
+    from application.services.setup_main_plot_suggestion_service import (
+        SetupMainPlotSuggestionService,
+    )
+
+    return SetupMainPlotSuggestionService(
+        llm_service=get_llm_service(),
+        bible_service=get_bible_service(),
+        novel_service=get_novel_service(),
+    )
+
+
 def get_bible_service() -> BibleService:
     """获取 Bible 服务
 
@@ -711,4 +734,37 @@ def get_sandbox_dialogue_service():
 
     narrative_event_repo = SqliteNarrativeEventRepository(get_database())
     return SandboxDialogueService(narrative_event_repo)
+
+
+def get_chapter_review_service():
+    """获取章节审稿服务
+
+    Returns:
+        ChapterReviewService 实例
+    """
+    from application.services.chapter_review_service import ChapterReviewService
+    from infrastructure.persistence.database.sqlite_chapter_repository import SqliteChapterRepository
+    from infrastructure.persistence.database.sqlite_cast_repository import SqliteCastRepository
+    from infrastructure.persistence.database.sqlite_timeline_repository import SqliteTimelineRepository
+    from infrastructure.persistence.database.sqlite_storyline_repository import SqliteStorylineRepository
+    from infrastructure.persistence.database.sqlite_foreshadowing_repository import SqliteForeshadowingRepository
+
+    db = get_database()
+    chapter_repo = SqliteChapterRepository(db)
+    cast_repo = SqliteCastRepository(db)
+    timeline_repo = SqliteTimelineRepository(db)
+    storyline_repo = SqliteStorylineRepository(db)
+    foreshadowing_repo = SqliteForeshadowingRepository(db)
+    vector_store = get_vector_store()
+    llm_service = get_llm_service()
+
+    return ChapterReviewService(
+        chapter_repo=chapter_repo,
+        cast_repo=cast_repo,
+        timeline_repo=timeline_repo,
+        storyline_repo=storyline_repo,
+        foreshadowing_repo=foreshadowing_repo,
+        vector_store=vector_store,
+        llm_service=llm_service
+    )
 

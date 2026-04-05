@@ -149,20 +149,86 @@
         </n-spin>
       </div>
 
-      <!-- Step 4: Storylines -->
-      <div v-else-if="currentStep === 4" class="step-panel">
-        <div class="step-info">
+      <!-- Step 4: 主线候选（LLM 推演） -->
+      <div v-else-if="currentStep === 4" class="step-panel step-panel--storyline">
+        <div class="step-info step-info--wide">
           <n-icon size="48" color="#2080f0">
             <IconTimeline />
           </n-icon>
-          <h3>规划故事线</h3>
-          <p>建议先设计故事的主线、支线和暗线，这将帮助 AI 更好地规划章节结构。</p>
-          <n-space vertical size="small" style="margin-top: 16px; text-align: left">
-            <div>• 主线：故事的核心发展脉络</div>
-            <div>• 支线：丰富情节的次要线索</div>
-            <div>• 暗线：隐藏的伏笔和线索</div>
-          </n-space>
+          <h3>确立故事主轴</h3>
+          <p>基于你已确认的世界观、人物与地图，系统推演三条可选<strong>主线方向</strong>。选定一条即可落库为「主线」；支线留到工作台再养。</p>
         </div>
+
+        <n-alert v-if="plotSuggestError" type="error" :title="plotSuggestError" style="margin-bottom: 12px; width: 100%" />
+        <n-alert v-if="mainPlotCommitted" type="success" title="已保存主线" style="margin-bottom: 12px; width: 100%">
+          已进入本书的主故事线记录，可随时在工作台「设置 → 故事线」中修改。
+        </n-alert>
+
+        <n-spin :show="plotSuggesting" style="width: 100%">
+          <div v-if="!customMode" class="plot-options-block">
+            <n-space vertical :size="12" style="width: 100%">
+              <n-card
+                v-for="opt in plotOptions"
+                :key="opt.id"
+                size="small"
+                :bordered="true"
+                class="plot-option-card"
+                :class="{ 'plot-option-card--disabled': mainPlotCommitted }"
+              >
+                <template #header>
+                  <n-space align="center" :size="8">
+                    <n-tag size="small" type="info" round>{{ opt.type || '主线方案' }}</n-tag>
+                    <span class="plot-option-title">{{ opt.title }}</span>
+                  </n-space>
+                </template>
+                <n-space vertical :size="8">
+                  <div class="plot-line"><strong>梗概：</strong>{{ opt.logline }}</div>
+                  <div v-if="opt.core_conflict" class="plot-line"><strong>核心冲突：</strong>{{ opt.core_conflict }}</div>
+                  <div v-if="opt.starting_hook" class="plot-line"><strong>开篇钩子：</strong>{{ opt.starting_hook }}</div>
+                  <n-button
+                    type="primary"
+                    size="small"
+                    :loading="adoptingPlotId === opt.id"
+                    :disabled="mainPlotCommitted"
+                    @click="adoptPlotOption(opt)"
+                  >
+                    选这条作为主线
+                  </n-button>
+                </n-space>
+              </n-card>
+            </n-space>
+
+            <n-space style="margin-top: 16px; width: 100%" justify="center" :size="12">
+              <n-button secondary :disabled="mainPlotCommitted || plotSuggesting" @click="refreshPlotSuggestions">
+                换一组方向
+              </n-button>
+              <n-button secondary :disabled="mainPlotCommitted" @click="customMode = true">
+                我有自己的想法
+              </n-button>
+            </n-space>
+          </div>
+
+          <div v-else class="plot-custom-block">
+            <n-input
+              v-model:value="customLogline"
+              type="textarea"
+              placeholder="用一句话写下你想写的主线（例如：废柴少年为救妹妹卷入财阀灵根黑市……）"
+              :autosize="{ minRows: 2, maxRows: 5 }"
+              :disabled="mainPlotCommitted"
+            />
+            <n-space style="margin-top: 12px" :size="8">
+              <n-button :disabled="mainPlotCommitted" @click="cancelCustomMainPlot">返回候选</n-button>
+              <n-button
+                type="primary"
+                :loading="adoptingCustom"
+                :disabled="mainPlotCommitted"
+                @click="adoptCustomMainPlot"
+              >
+                用这句话作为主线
+              </n-button>
+            </n-space>
+          </div>
+        </n-spin>
       </div>
 
       <!-- Step 5: Plot Arc -->
@@ -210,8 +276,9 @@
           >
             确认并继续
           </n-button>
-          <n-button v-if="currentStep >= 4 && currentStep <= 5" @click="handleNext">
-            {{ currentStep === 5 ? '完成设置' : '下一步' }}
+          <n-button v-if="currentStep === 4" :disabled="!mainPlotCommitted" @click="handleNext"> 下一步 </n-button>
+          <n-button v-if="currentStep === 5" @click="handleNext">
+            完成设置
           </n-button>
           <n-button v-if="currentStep === 6" type="primary" @click="handleComplete">
             进入工作台
@@ -224,8 +291,10 @@
 
 <script setup lang="ts">
 import { h, ref, watch, computed, onUnmounted } from 'vue'
+import { useMessage } from 'naive-ui'
 import { bibleApi, type BibleDTO, type StyleNoteDTO } from '@/api/bible'
 import { worldbuildingApi } from '@/api/worldbuilding'
+import { workflowApi, type MainPlotOptionDTO } from '@/api/workflow'
 import BibleLocationsGraphPreview from './BibleLocationsGraphPreview.vue'
 
 const WB_DIMS = ['core_rules', 'geography', 'society', 'culture', 'daily_life'] as const
@@ -353,10 +422,17 @@ const IconCheck = () =>
     h('path', { d: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z' })
   )
 
-const props = defineProps<{
-  novelId: string
-  show: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    novelId: string
+    show: boolean
+    /** 用于主线默认章节范围 1 ~ targetChapters */
+    targetChapters?: number
+  }>(),
+  { targetChapters: 100 }
+)
+
+const message = useMessage()
 
 const emit = defineEmits<{
   (e: 'update:show', value: boolean): void
@@ -390,6 +466,88 @@ const charactersGenerated = ref(false)
 // 第3步：生成地点
 const generatingLocations = ref(false)
 const locationsGenerated = ref(false)
+
+// Step 4：主线推演
+const plotOptions = ref<MainPlotOptionDTO[]>([])
+const plotSuggesting = ref(false)
+const plotSuggestError = ref('')
+const mainPlotCommitted = ref(false)
+const customMode = ref(false)
+const customLogline = ref('')
+const adoptingPlotId = ref<string | null>(null)
+const adoptingCustom = ref(false)
+
+const chapterEndForStoryline = computed(() => Math.max(1, props.targetChapters ?? 100))
+
+async function loadPlotSuggestions() {
+  plotSuggesting.value = true
+  plotSuggestError.value = ''
+  try {
+    const res = await workflowApi.suggestMainPlotOptions(props.novelId)
+    plotOptions.value = res.plot_options || []
+  } catch (e: unknown) {
+    plotSuggestError.value = formatApiError(e) || '推演失败，请重试'
+  } finally {
+    plotSuggesting.value = false
+  }
+}
+
+async function refreshPlotSuggestions() {
+  await loadPlotSuggestions()
+}
+
+async function adoptPlotOption(opt: MainPlotOptionDTO) {
+  adoptingPlotId.value = opt.id
+  try {
+    const parts = [
+      opt.logline,
+      opt.core_conflict ? `核心冲突：${opt.core_conflict}` : '',
+      opt.starting_hook ? `开篇钩子：${opt.starting_hook}` : '',
+    ].filter(Boolean)
+    await workflowApi.createStoryline(props.novelId, {
+      storyline_type: 'main_plot',
+      estimated_chapter_start: 1,
+      estimated_chapter_end: chapterEndForStoryline.value,
+      name: opt.title.slice(0, 200),
+      description: parts.join('\n\n').slice(0, 8000),
+    })
+    mainPlotCommitted.value = true
+    message.success('主线已保存')
+  } catch (e: unknown) {
+    message.error(formatApiError(e) || '保存失败')
+  } finally {
+    adoptingPlotId.value = null
+  }
+}
+
+async function adoptCustomMainPlot() {
+  const t = customLogline.value.trim()
+  if (!t) {
+    message.warning('请先写下一句话主线')
+    return
+  }
+  adoptingCustom.value = true
+  try {
+    await workflowApi.createStoryline(props.novelId, {
+      storyline_type: 'main_plot',
+      estimated_chapter_start: 1,
+      estimated_chapter_end: chapterEndForStoryline.value,
+      name: t.length > 80 ? `${t.slice(0, 80)}…` : t,
+      description: t.slice(0, 8000),
+    })
+    mainPlotCommitted.value = true
+    customMode.value = false
+    message.success('主线已保存')
+  } catch (e: unknown) {
+    message.error(formatApiError(e) || '保存失败')
+  } finally {
+    adoptingCustom.value = false
+  }
+}
+
+function cancelCustomMainPlot() {
+  customMode.value = false
+}
 
 const pollTimerRef = ref<ReturnType<typeof setTimeout> | null>(null)
 const timeoutTimerRef = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -510,6 +668,11 @@ watch(
     if (val) {
       currentStep.value = 1
       stepStatus.value = 'process'
+      plotOptions.value = []
+      mainPlotCommitted.value = false
+      customMode.value = false
+      customLogline.value = ''
+      plotSuggestError.value = ''
       void startBibleGeneration()
     } else {
       biblePollEpoch.value += 1
@@ -519,6 +682,12 @@ watch(
   },
   { immediate: true }
 )
+
+watch(currentStep, (step) => {
+  if (step === 4 && props.show && plotOptions.value.length === 0 && !plotSuggesting.value) {
+    void loadPlotSuggestions()
+  }
+})
 
 const handleNext = async () => {
   if (currentStep.value === 1) {
@@ -612,6 +781,38 @@ const handleComplete = () => {
   color: #666;
   line-height: 1.6;
   margin: 8px 0;
+}
+
+.step-panel--storyline {
+  align-items: stretch;
+  max-width: 100%;
+}
+
+.step-info--wide {
+  max-width: 100%;
+  text-align: center;
+}
+
+.plot-options-block,
+.plot-custom-block {
+  width: 100%;
+}
+
+.plot-option-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.plot-line {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #555;
+  text-align: left;
+}
+
+.plot-option-card--disabled {
+  opacity: 0.72;
+  pointer-events: none;
 }
 
 .style-convention-text {

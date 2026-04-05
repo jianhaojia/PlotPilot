@@ -150,6 +150,7 @@
     <NovelSetupGuide
       v-if="newNovelId"
       :novel-id="newNovelId"
+      :target-chapters="newNovelTargetChapters"
       :show="showSetupGuide"
       @update:show="showSetupGuide = $event"
       @complete="handleSetupComplete"
@@ -209,6 +210,7 @@ const searchQuery = ref('')
 const deletingSlug = ref<string | null>(null)
 const showSetupGuide = ref(false)
 const newNovelId = ref('')
+const newNovelTargetChapters = ref(10)
 
 const newBook = ref({
   title: '',
@@ -283,11 +285,12 @@ const handleCreate = async () => {
     const title = newBook.value.title || newBook.value.premise.substring(0, 20)
     const novelId = `novel-${Date.now()}`
 
+    const targetChapters = showAdvanced.value ? newBook.value.chapters : 10
     const payload = {
       novel_id: novelId,
       title: title,
       author: '作者', // Default author
-      target_chapters: showAdvanced.value ? newBook.value.chapters : 10,
+      target_chapters: targetChapters,
       premise: newBook.value.premise, // 传递故事梗概
     }
 
@@ -296,6 +299,7 @@ const handleCreate = async () => {
 
     // Show setup guide instead of navigating directly
     newNovelId.value = result.id
+    newNovelTargetChapters.value = targetChapters
     showSetupGuide.value = true
   } catch (error: any) {
     message.error(error.response?.data?.detail || '创建失败')

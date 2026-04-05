@@ -11,6 +11,17 @@ export interface StorylineDTO {
   status: string
   estimated_chapter_start: number
   estimated_chapter_end: number
+  name?: string
+  description?: string
+}
+
+export interface MainPlotOptionDTO {
+  id: string
+  type: string
+  title: string
+  logline: string
+  core_conflict: string
+  starting_hook: string
 }
 
 export interface PlotPointDTO {
@@ -265,9 +276,24 @@ export const workflowApi = {
   getStorylines: (novelId: string) =>
     apiClient.get<StorylineDTO[]>(`/novels/${novelId}/storylines`) as unknown as Promise<StorylineDTO[]>,
 
+  /** POST /api/v1/novels/{novel_id}/setup/suggest-main-plot-options */
+  suggestMainPlotOptions: (novelId: string) =>
+    apiClient.post<{ plot_options: MainPlotOptionDTO[] }>(
+      `/novels/${novelId}/setup/suggest-main-plot-options`,
+      {}
+    ) as unknown as Promise<{ plot_options: MainPlotOptionDTO[] }>,
+
   /** POST /api/v1/novels/{novel_id}/storylines */
-  createStoryline: (novelId: string, data: { storyline_type: string; estimated_chapter_start: number; estimated_chapter_end: number }) =>
-    apiClient.post<StorylineDTO>(`/novels/${novelId}/storylines`, data) as unknown as Promise<StorylineDTO>,
+  createStoryline: (
+    novelId: string,
+    data: {
+      storyline_type: string
+      estimated_chapter_start: number
+      estimated_chapter_end: number
+      name?: string
+      description?: string
+    }
+  ) => apiClient.post<StorylineDTO>(`/novels/${novelId}/storylines`, data) as unknown as Promise<StorylineDTO>,
 
   /** PUT /api/v1/novels/{novel_id}/storylines/{storyline_id} */
   updateStoryline: (novelId: string, storylineId: string, data: Partial<{ storyline_type: string; estimated_chapter_start: number; estimated_chapter_end: number; status: string }>) =>

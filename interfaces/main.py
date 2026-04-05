@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from interfaces.api.v1 import novels, chapters, bible, cast, knowledge, generation, story_structure
 from interfaces.api.v1 import chapter_element_routes, knowledge_graph_routes, continuous_planning_routes
-from interfaces.api.v1 import worldbuilding_routes, context_intelligence, narrative_state, foreshadow_ledger, voice, macro_refactor, writer_block, sandbox, beat_sheet_routes, scene_generation_routes
+from interfaces.api.v1 import worldbuilding_routes, context_intelligence, narrative_state, foreshadow_ledger, voice, macro_refactor, writer_block, sandbox, beat_sheet_routes, scene_generation_routes, chapter_review_routes
 from web.routers.stats import create_stats_router
 from web.services.stats_service import StatsService
 from web.repositories.sqlite_stats_repository_adapter import SqliteStatsRepositoryAdapter
@@ -79,6 +79,7 @@ app.include_router(knowledge_graph_routes.router)
 app.include_router(worldbuilding_routes.router)
 app.include_router(beat_sheet_routes.router)
 app.include_router(scene_generation_routes.router)
+app.include_router(chapter_review_routes.router)
 
 # 注册统计路由（使用 SQLite 适配器）
 stats_repository = SqliteStatsRepositoryAdapter(get_database())

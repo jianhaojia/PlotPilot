@@ -459,6 +459,38 @@ class MockProvider(LLMService):
                     }
                 ]
             }, ensure_ascii=False)
+        elif "setup_main_plot_options_v1" in prompt.user:
+            content = json.dumps(
+                {
+                    "plot_options": [
+                        {
+                            "id": "mock_option_a",
+                            "type": "底层逆袭 / 生存狂飙",
+                            "title": "暗巷里的第一票",
+                            "logline": "主角为救至亲卷入黑市交易，却摸到上层不想让人看见的命脉。",
+                            "core_conflict": "无名小卒 vs 掌控信息与暴力的结构之手",
+                            "starting_hook": "货不对板：箱子里不是药，而是一枚会招来杀身之祸的证物。",
+                        },
+                        {
+                            "id": "mock_option_b",
+                            "type": "自上而下的阴谋",
+                            "title": "干净的报表，脏掉的人",
+                            "logline": "主角被指派“善后”一桩意外，却发现所有线索都指向自己信任的制度。",
+                            "core_conflict": "个体的良知 vs 系统性的封口与甩锅",
+                            "starting_hook": "上级的口头表扬与同时到达的匿名警告，只相隔十分钟。",
+                        },
+                        {
+                            "id": "mock_option_c",
+                            "type": "异类 / 变数觉醒",
+                            "title": "规则写错了你的名字",
+                            "logline": "主角的能力/体质无法被既有体系解释，于是成为被争夺的变量。",
+                            "core_conflict": "不可归类之人 vs 必须维持分类的权力",
+                            "starting_hook": "检测仪在主角面前死机，而围观者的眼神先一步变了。",
+                        },
+                    ]
+                },
+                ensure_ascii=False,
+            )
         elif "地点" in user_prompt or "location" in user_prompt:
             # Location generation
             content = json.dumps({

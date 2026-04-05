@@ -28,6 +28,7 @@ from interfaces.api.dependencies import (
     get_chapter_service,
     get_auto_bible_generator,
     get_auto_knowledge_generator,
+    get_setup_main_plot_suggestion_service,
 )
 # from application.services.story_structure_ai_service import StoryStructureAIService  # 已废弃，使用 ContinuousPlanningService
 from application.services.continuous_planning_service import ContinuousPlanningService
@@ -135,6 +136,8 @@ class StorylineResponse(BaseModel):
     status: str
     estimated_chapter_start: int
     estimated_chapter_end: int
+    name: str = ""
+    description: str = ""
 
 
 class CreateStorylineRequest(BaseModel):
@@ -142,6 +145,34 @@ class CreateStorylineRequest(BaseModel):
     storyline_type: str = Field(..., description="故事线类型")
     estimated_chapter_start: int = Field(..., gt=0)
     estimated_chapter_end: int = Field(..., gt=0)
+    name: Optional[str] = Field(None, description="显示名称")
+    description: Optional[str] = Field(None, description="详细说明")
+
+
+class MainPlotOptionItem(BaseModel):
+    """向导推演得到的一条主线候选"""
+    id: str
+    type: str = ""
+    title: str
+    logline: str = ""
+    core_conflict: str = ""
+    starting_hook: str = ""
+
+
+class SuggestMainPlotOptionsResponse(BaseModel):
+    plot_options: List[MainPlotOptionItem]
+
+
+def _storyline_to_response(storyline) -> StorylineResponse:
+    return StorylineResponse(
+        id=storyline.id,
+        storyline_type=storyline.storyline_type.value,
+        status=storyline.status.value,
+        estimated_chapter_start=storyline.estimated_chapter_start,
+        estimated_chapter_end=storyline.estimated_chapter_end,
+        name=getattr(storyline, "name", "") or "",
+        description=getattr(storyline, "description", "") or "",
+    )
 
 
 class PlotPointResponse(BaseModel):
@@ -421,6 +452,31 @@ async def get_consistency_report(
     )
 
 
+@router.post(
+    "/{novel_id}/setup/suggest-main-plot-options",
+    response_model=SuggestMainPlotOptionsResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def suggest_main_plot_options(
+    novel_id: str,
+    novel_service=Depends(get_novel_service),
+    setup_svc=Depends(get_setup_main_plot_suggestion_service),
+):
+    """向导 Step 4：根据 Bible 与小说元数据，由 LLM 推演 3 条主线候选。"""
+    if novel_service.get_novel(novel_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Novel not found")
+    try:
+        raw = await setup_svc.suggest_options(novel_id)
+        items = [MainPlotOptionItem(**opt) for opt in raw]
+        return SuggestMainPlotOptionsResponse(plot_options=items)
+    except Exception as e:
+        logger.exception("suggest_main_plot_options failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to suggest main plot options: {str(e)}",
+        )
+
+
 @router.get(
     "/{novel_id}/storylines",
     response_model=List[StorylineResponse],
@@ -434,16 +490,7 @@ def get_storylines(
     try:
         storylines = manager.repository.get_by_novel_id(NovelId(novel_id))
 
-        return [
-            StorylineResponse(
-                id=storyline.id,
-                storyline_type=storyline.storyline_type.value,
-                status=storyline.status.value,
-                estimated_chapter_start=storyline.estimated_chapter_start,
-                estimated_chapter_end=storyline.estimated_chapter_end
-            )
-            for storyline in storylines
-        ]
+        return [_storyline_to_response(storyline) for storyline in storylines]
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -467,16 +514,12 @@ def create_storyline(
             novel_id=NovelId(novel_id),
             storyline_type=StorylineType(request.storyline_type),
             estimated_chapter_start=request.estimated_chapter_start,
-            estimated_chapter_end=request.estimated_chapter_end
+            estimated_chapter_end=request.estimated_chapter_end,
+            name=(request.name or "").strip(),
+            description=(request.description or "").strip(),
         )
 
-        return StorylineResponse(
-            id=storyline.id,
-            storyline_type=storyline.storyline_type.value,
-            status=storyline.status.value,
-            estimated_chapter_start=storyline.estimated_chapter_start,
-            estimated_chapter_end=storyline.estimated_chapter_end
-        )
+        return _storyline_to_response(storyline)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
@@ -492,6 +535,8 @@ class UpdateStorylineRequest(BaseModel):
     estimated_chapter_start: Optional[int] = Field(None, gt=0)
     estimated_chapter_end: Optional[int] = Field(None, gt=0)
     status: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 
 @router.put(
@@ -520,16 +565,14 @@ def update_storyline(
         if request.status is not None:
             from domain.novel.value_objects.storyline_status import StorylineStatus
             storyline.status = StorylineStatus(request.status)
+        if request.name is not None:
+            storyline.name = request.name.strip()
+        if request.description is not None:
+            storyline.description = request.description.strip()
 
         manager.repository.save(storyline)
 
-        return StorylineResponse(
-            id=storyline.id,
-            storyline_type=storyline.storyline_type.value,
-            status=storyline.status.value,
-            estimated_chapter_start=storyline.estimated_chapter_start,
-            estimated_chapter_end=storyline.estimated_chapter_end
-        )
+        return _storyline_to_response(storyline)
     except HTTPException:
         raise
     except ValueError as e:
