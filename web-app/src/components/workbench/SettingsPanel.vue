@@ -28,6 +28,10 @@
       <n-tab-pane name="foreshadow" tab="伏笔">
         <ForeshadowLedgerPanel :slug="slug" />
       </n-tab-pane>
+
+      <n-tab-pane name="macro-refactor" tab="重构扫描">
+        <MacroRefactorPanel :slug="slug" />
+      </n-tab-pane>
     </n-tabs>
 
     <!-- Chapter Info Card -->
@@ -69,6 +73,7 @@ import StorylinePanel from './StorylinePanel.vue'
 import PlotArcPanel from './PlotArcPanel.vue'
 import TimelinePanel from './TimelinePanel.vue'
 import ForeshadowLedgerPanel from './ForeshadowLedgerPanel.vue'
+import MacroRefactorPanel from './MacroRefactorPanel.vue'
 
 interface Chapter {
   id: number

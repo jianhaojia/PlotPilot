@@ -28,6 +28,45 @@
 
     <div class="panel-content">
       <n-spin :show="loading">
+        <!-- 场景感官匹配 -->
+        <template v-if="activeTab === 'pending'">
+          <n-card size="small" :bordered="false" class="match-card">
+            <template #header>
+              <n-space align="center" justify="space-between" style="width:100%">
+                <n-text strong style="font-size:13px">场景感官匹配</n-text>
+                <n-button size="tiny" secondary :loading="matchLoading" @click="runMatch">
+                  匹配当前场景
+                </n-button>
+              </n-space>
+            </template>
+            <n-space vertical :size="8">
+              <n-text depth="3" style="font-size:12px">输入当前场景的感官描述词，AI 找出最匹配的待兑现伏笔。</n-text>
+              <n-space v-for="(_, idx) in matchAnchors" :key="idx" :size="6" align="center">
+                <n-input v-model:value="matchAnchors[idx].key" placeholder="感官（视觉/听觉…）" style="width:100px" size="small" />
+                <n-input v-model:value="matchAnchors[idx].value" placeholder="关键词" style="flex:1" size="small" />
+                <n-button size="tiny" text @click="matchAnchors.splice(idx, 1)">✕</n-button>
+              </n-space>
+              <n-button size="tiny" dashed secondary @click="matchAnchors.push({ key: '', value: '' })">+ 添加感官</n-button>
+
+              <template v-if="matchResult !== null">
+                <n-divider style="margin:4px 0" />
+                <template v-if="matchResult.matched && matchResult.entry">
+                  <n-space align="center" :size="6">
+                    <n-tag type="success" size="small" round>✓ 找到匹配</n-tag>
+                    <n-text strong style="font-size:13px">{{ matchResult.entry.hidden_clue }}</n-text>
+                  </n-space>
+                  <n-text depth="3" style="font-size:12px">
+                    第 {{ matchResult.entry.chapter }} 章埋入 · {{ matchResult.entry.character_id }}
+                  </n-text>
+                </template>
+                <n-alert v-else type="default" :show-icon="false" style="font-size:12px">
+                  暂无匹配的待兑现伏笔
+                </n-alert>
+              </template>
+            </n-space>
+          </n-card>
+        </template>
+
         <template v-if="activeTab === 'pending'">
           <n-empty v-if="pendingEntries.length === 0" description="暂无待兑现伏笔，点击「添加伏笔」开始布局">
             <template #icon><span style="font-size:42px">🪄</span></template>
@@ -180,7 +219,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useMessage } from 'naive-ui'
 import { foreshadowApi } from '../../api/foreshadow'
-import type { ForeshadowEntry } from '../../api/foreshadow'
+import type { ForeshadowEntry, MatchForeshadowResponse } from '../../api/foreshadow'
 
 interface Props { slug: string }
 const props = defineProps<Props>()
@@ -200,6 +239,27 @@ const showModal = ref(false)
 const editingEntry = ref<ForeshadowEntry | null>(null)
 const form = ref({ hidden_clue: '', character_id: '', chapter: 1 })
 const anchorRows = ref<{ key: string; value: string }[]>([])
+
+// 感官匹配
+const matchAnchors = ref<{ key: string; value: string }[]>([{ key: '', value: '' }])
+const matchLoading = ref(false)
+const matchResult = ref<MatchForeshadowResponse | null>(null)
+
+const runMatch = async () => {
+  const anchors: Record<string, string> = {}
+  for (const row of matchAnchors.value) {
+    if (row.key.trim()) anchors[row.key.trim()] = row.value
+  }
+  if (Object.keys(anchors).length === 0) { message.warning('请至少填写一个感官锚点'); return }
+  matchLoading.value = true
+  try {
+    matchResult.value = await foreshadowApi.match(props.slug, anchors)
+  } catch {
+    message.error('匹配失败')
+  } finally {
+    matchLoading.value = false
+  }
+}
 
 // 消费弹窗
 const showConsumeModal = ref(false)
@@ -342,6 +402,7 @@ onMounted(load)
 
 .panel-content { flex: 1; overflow-y: auto; padding: 14px 16px; }
 
+.match-card { margin-bottom: 12px; background: rgba(79,70,229,0.04); border-radius: 10px; }
 .entry-card { transition: opacity 0.2s; }
 .entry-card--consumed { opacity: 0.65; }
 .entry-header { display: flex; align-items: center; gap: 8px; }

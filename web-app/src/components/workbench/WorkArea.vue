@@ -51,6 +51,9 @@
               <n-button size="small" @click="handleReviewChapter" :loading="reviewing" :disabled="currentChapter.word_count === 0">
                 AI 审稿
               </n-button>
+              <n-button size="small" secondary @click="openTensionModal" title="卡关时分析张力缺口，获得突破建议">
+                ⚡ 卡关突破
+              </n-button>
             </n-space>
           </n-space>
         </div>
@@ -316,6 +319,82 @@
         </n-space>
       </template>
     </n-modal>
+
+    <!-- 张力弹弓弹窗 -->
+    <n-modal
+      v-model:show="showTensionModal"
+      preset="card"
+      title="⚡ 卡关突破 · 张力弹弓"
+      style="width: min(560px, 96vw)"
+    >
+      <n-space vertical :size="16">
+        <n-alert type="info" :show-icon="false" style="font-size:13px">
+          描述卡关原因（可选），AI 会诊断当前章节张力缺口并给出突破建议。
+        </n-alert>
+
+        <n-form-item label="卡关原因" label-placement="top" :show-feedback="false">
+          <n-input
+            v-model:value="tensionStuckReason"
+            type="textarea"
+            placeholder="例：人物对话没有冲突，场景推进感觉平淡……（留空也可分析）"
+            :autosize="{ minRows: 2, maxRows: 5 }"
+          />
+        </n-form-item>
+
+        <n-button type="primary" block :loading="tensionLoading" @click="runTensionSlingshot">
+          开始分析
+        </n-button>
+
+        <template v-if="tensionResult">
+          <n-divider style="margin:4px 0" />
+          <n-space vertical :size="10">
+            <n-space align="center" :size="8">
+              <n-text strong>张力等级</n-text>
+              <n-tag
+                :type="tensionResult.tension_level === 'high' ? 'success' : tensionResult.tension_level === 'medium' ? 'warning' : 'error'"
+                round
+              >
+                {{ tensionResult.tension_level === 'high' ? '高张力' : tensionResult.tension_level === 'medium' ? '中等' : '低张力 ⚠' }}
+              </n-tag>
+            </n-space>
+
+            <div>
+              <n-text strong style="display:block;margin-bottom:6px">诊断</n-text>
+              <n-text style="font-size:13px;line-height:1.7">{{ tensionResult.diagnosis }}</n-text>
+            </div>
+
+            <div v-if="tensionResult.missing_elements.length">
+              <n-text strong style="display:block;margin-bottom:6px">缺失元素</n-text>
+              <n-space wrap :size="6">
+                <n-tag v-for="el in tensionResult.missing_elements" :key="el" type="warning" size="small" round>
+                  {{ el }}
+                </n-tag>
+              </n-space>
+            </div>
+
+            <div v-if="tensionResult.suggestions.length">
+              <n-text strong style="display:block;margin-bottom:6px">突破建议</n-text>
+              <n-space vertical :size="6">
+                <n-card
+                  v-for="(s, i) in tensionResult.suggestions"
+                  :key="i"
+                  size="small"
+                  :bordered="true"
+                  style="font-size:13px;line-height:1.7"
+                >
+                  {{ i + 1 }}. {{ s }}
+                </n-card>
+              </n-space>
+            </div>
+          </n-space>
+        </template>
+      </n-space>
+      <template #action>
+        <n-space justify="end">
+          <n-button @click="showTensionModal = false">关闭</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -331,6 +410,8 @@ import {
 } from '../../api/workflow'
 import type { ContextPreviewResult } from '../../api/workflow'
 import { chapterApi } from '../../api/chapter'
+import { tensionApi } from '../../api/tools'
+import type { TensionDiagnosis } from '../../api/tools'
 
 interface Chapter {
   id: number
@@ -386,6 +467,34 @@ const reviewResult = ref<{ score: number; suggestions: string[] } | null>(null)
 const useSceneDirector = ref(false)
 const analyzingScene = ref(false)
 const sceneDirectorError = ref('')
+
+// 张力弹弓
+const showTensionModal = ref(false)
+const tensionLoading = ref(false)
+const tensionStuckReason = ref('')
+const tensionResult = ref<TensionDiagnosis | null>(null)
+
+const openTensionModal = () => {
+  tensionResult.value = null
+  tensionStuckReason.value = ''
+  showTensionModal.value = true
+}
+
+const runTensionSlingshot = async () => {
+  if (!currentChapter.value) return
+  tensionLoading.value = true
+  try {
+    tensionResult.value = await tensionApi.slingshot(props.slug, {
+      novel_id: props.slug,
+      chapter_number: currentChapter.value.number,
+      stuck_reason: tensionStuckReason.value || undefined,
+    })
+  } catch {
+    message.error('分析失败，请稍后重试')
+  } finally {
+    tensionLoading.value = false
+  }
+}
 
 // 上下文预览
 const contextPreview = ref<ContextPreviewResult | null>(null)

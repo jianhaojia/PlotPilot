@@ -250,6 +250,56 @@
         <n-button dashed block class="kp-add-ch" @click="addChapter">+ 添加一章叙事块</n-button>
         </section>
       </n-tab-pane>
+
+      <n-tab-pane name="entity-state" tab="实体状态">
+        <section class="kp-section">
+          <div class="kp-section-head">
+            <span class="kp-section-icon">◈</span>
+            <span class="kp-section-title">实体状态快照</span>
+          </div>
+          <p class="kp-section-hint">输入实体 ID 和章节号，查询该实体在指定章节时的叙事状态（通过回放该章之前所有事件计算得出）。</p>
+
+          <n-card size="small" class="kp-card" :bordered="false">
+            <n-space vertical :size="12">
+              <n-space :size="10" align="center">
+                <n-form-item label="实体 ID" label-placement="left" label-width="65" :show-feedback="false">
+                  <n-input
+                    v-model:value="entityStateId"
+                    placeholder="如：char-001 或角色名"
+                    style="width:160px"
+                    size="small"
+                  />
+                </n-form-item>
+                <n-form-item label="章节" label-placement="left" label-width="36" :show-feedback="false">
+                  <n-input-number v-model:value="entityStateChapter" :min="1" style="width:88px" size="small" />
+                </n-form-item>
+                <n-button size="small" type="primary" :loading="entityStateLoading" @click="fetchEntityState">
+                  查询
+                </n-button>
+              </n-space>
+
+              <template v-if="entityStateResult">
+                <n-divider style="margin:4px 0" />
+                <n-space vertical :size="6">
+                  <n-space align="center" :size="6">
+                    <n-tag type="info" round size="small">{{ entityStateResult.entity_id }}</n-tag>
+                    <n-text depth="3" style="font-size:12px">第 {{ entityStateChapter }} 章时的状态</n-text>
+                  </n-space>
+                  <div class="entity-state-grid">
+                    <template v-for="(v, k) in entityStateDisplay" :key="k">
+                      <n-text depth="3" class="estate-key">{{ k }}</n-text>
+                      <n-text class="estate-val">{{ v }}</n-text>
+                    </template>
+                  </div>
+                </n-space>
+              </template>
+              <n-alert v-else-if="entityStateError" type="warning" :show-icon="false" style="font-size:12px">
+                {{ entityStateError }}
+              </n-alert>
+            </n-space>
+          </n-card>
+        </section>
+      </n-tab-pane>
     </n-tabs>
     </div>
 
@@ -291,6 +341,8 @@ import { useMessage } from 'naive-ui'
 import { PeopleOutline, LocationOutline } from '@vicons/ionicons5'
 import { chapterApi } from '../../api/chapter'
 import { knowledgeApi } from '../../api/knowledge'
+import { narrativeStateApi } from '../../api/tools'
+import type { EntityState } from '../../api/tools'
 import CastGraphCompact from '../graphs/CastGraphCompact.vue'
 import LocationGraphCompact from '../graphs/LocationGraphCompact.vue'
 import KnowledgeGraphView from './KnowledgeGraphView.vue'
@@ -329,7 +381,41 @@ const data = ref({
 const saving = ref(false)
 const generating = ref(false)
 const sideTab = ref<'search' | 'narrative' | 'graph'>('search')
-const subTab = ref<'premise' | 'chapters'>('premise')
+const subTab = ref<'premise' | 'chapters' | 'entity-state'>('premise')
+
+// 实体状态查询
+const entityStateId = ref('')
+const entityStateChapter = ref(1)
+const entityStateLoading = ref(false)
+const entityStateResult = ref<EntityState | null>(null)
+const entityStateError = ref('')
+
+const entityStateDisplay = computed(() => {
+  if (!entityStateResult.value) return {}
+  const { entity_id, ...rest } = entityStateResult.value
+  return rest
+})
+
+const fetchEntityState = async () => {
+  if (!entityStateId.value.trim()) { message.warning('请输入实体 ID'); return }
+  entityStateLoading.value = true
+  entityStateResult.value = null
+  entityStateError.value = ''
+  try {
+    entityStateResult.value = await narrativeStateApi.getState(
+      props.slug,
+      entityStateId.value.trim(),
+      entityStateChapter.value
+    )
+  } catch (e: unknown) {
+    const err = e as { response?: { status?: number } }
+    entityStateError.value = err.response?.status === 404
+      ? `未找到实体「${entityStateId.value}」`
+      : '查询失败，请确认实体 ID 是否正确'
+  } finally {
+    entityStateLoading.value = false
+  }
+}
 const outlineTitles = ref<Record<number, string>>({})
 const searchQ = ref('')
 const searching = ref(false)
@@ -740,6 +826,20 @@ onMounted(() => {
 
 .kp-add-ch {
   margin-top: 4px;
+}
+
+.entity-state-grid {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+.estate-key {
+  color: var(--text-color-3);
+  word-break: break-all;
+}
+.estate-val {
+  word-break: break-all;
 }
 
 .kp-seg {
