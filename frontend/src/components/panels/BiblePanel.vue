@@ -7,9 +7,13 @@
           <n-tag size="small" round :bordered="false" class="bible-badge">Story Bible</n-tag>
         </div>
         <p class="bible-lead">
-          全书<strong>写作公约与风格指南</strong>：人称、时态、叙事距离、基调与禁区——全书的「怎么写」。
+          <strong>梗概锁定</strong>（主线与不可违背设定）与<strong>写作公约</strong>（人称、时态、叙事距离、基调与禁区）——全书的「写什么」与「怎么写」。
         </p>
         <div class="bible-roles" aria-label="资料分工">
+          <div class="bible-role-item bible-role-here">
+            <span class="bible-role-k">梗概锁定</span>
+            <span class="bible-role-v">此处 · 主线与不可违背设定（全书上下文）</span>
+          </div>
           <div class="bible-role-item">
             <span class="bible-role-k">世界观构建</span>
             <span class="bible-role-v">世界观 Tab · 5维度框架</span>
@@ -28,6 +32,10 @@
           </div>
         </div>
         <div class="bible-stats" aria-live="polite">
+          <span class="bible-stat bible-stat-premise" :class="{ 'is-done': stats.premiseOk }">
+            梗概锁定 {{ stats.premiseOk ? '已填' : '待补充' }}
+          </span>
+          <span class="bible-stat-dot" aria-hidden="true" />
           <span class="bible-stat bible-stat-style" :class="{ 'is-done': stats.styleOk }">
             文风公约 {{ stats.styleOk ? '已填' : '待补充' }}
           </span>
@@ -43,6 +51,41 @@
 
     <n-scrollbar class="bible-scroll">
       <div class="bible-form">
+        <n-card size="small" class="bible-card" :bordered="false" :segmented="{ content: true, footer: false }">
+          <template #header>
+            <div class="bcard-head bcard-head-row">
+              <div class="bcard-head-main">
+                <span class="bcard-icon bcard-icon-lock" aria-hidden="true">◆</span>
+                <div>
+                  <div class="bcard-title">梗概锁定</div>
+                  <div class="bcard-desc">
+                    主线、不可违背设定、结局走向（与 manifest 互补，防百万字跑篇）。写入全书知识上下文，工具
+                    <code class="bible-inline-code">story_set_premise_lock</code> 同源。
+                  </div>
+                </div>
+              </div>
+              <n-button
+                size="tiny"
+                secondary
+                :loading="generatingKnowledge"
+                @click="generatePremiseKnowledge"
+                title="根据 Bible 生成或刷新梗概锁定（覆盖当前框内容）"
+              >
+                ✦ AI 生成梗概
+              </n-button>
+            </div>
+          </template>
+          <n-input
+            v-model:value="premiseLock"
+            type="textarea"
+            :autosize="{ minRows: 5, maxRows: 18 }"
+            placeholder="主线、不可违背设定、结局走向（与 manifest 互补，防百万字跑篇）…"
+            show-count
+            :maxlength="24000"
+            class="bible-textarea"
+          />
+        </n-card>
+
         <n-card size="small" class="bible-card" :bordered="false" :segmented="{ content: true, footer: false }">
           <template #header>
             <div class="bcard-head">
@@ -151,6 +194,7 @@ import { ref, watch, onMounted, computed } from 'vue'
 import { useMessage } from 'naive-ui'
 import { bibleApi } from '../../api/bible'
 import type { CharacterDTO, LocationDTO, TimelineNoteDTO, StyleNoteDTO } from '../../api/bible'
+import { knowledgeApi } from '../../api/knowledge'
 import { voiceApi } from '../../api/voice'
 import type { VoiceFingerprintDTO } from '../../api/voice'
 
@@ -181,6 +225,8 @@ const jsonRaw = ref('')
 const showJsonModal = ref(false)
 const saving = ref(false)
 const generating = ref(false)
+const premiseLock = ref('')
+const generatingKnowledge = ref(false)
 
 // 文风样本
 const voiceForm = ref({ ai_original: '', author_refined: '', chapter_number: 1, scene_type: 'general' })
@@ -218,7 +264,8 @@ const submitVoiceSample = async () => {
 
 const stats = computed(() => {
   const styleOk = (state.value.style_notes || '').trim().length >= 20
-  return { styleOk }
+  const premiseOk = (premiseLock.value || '').trim().length >= 20
+  return { styleOk, premiseOk }
 })
 
 const syncJsonFromState = () => {
@@ -290,6 +337,15 @@ const toApiFormat = (data: any) => {
   return { characters, world_settings: [], locations, timeline_notes: [], style_notes }
 }
 
+const loadPremiseLock = async () => {
+  try {
+    const k = await knowledgeApi.getKnowledge(props.slug)
+    premiseLock.value = k.premise_lock || ''
+  } catch {
+    premiseLock.value = ''
+  }
+}
+
 const load = async () => {
   try {
     const bible = await bibleApi.getBible(props.slug)
@@ -309,6 +365,7 @@ const load = async () => {
       message.error('加载设定失败')
     }
   }
+  await loadPremiseLock()
 }
 
 const save = async () => {
@@ -321,12 +378,34 @@ const save = async () => {
     }
     const apiData = toApiFormat(payload)
     await bibleApi.updateBible(props.slug, apiData)
-    message.success('设定已保存')
+
+    const k = await knowledgeApi.getKnowledge(props.slug)
+    await knowledgeApi.updateKnowledge(props.slug, {
+      ...k,
+      premise_lock: premiseLock.value.trim(),
+    })
+    window.dispatchEvent(new CustomEvent('aitext:knowledge:reload'))
+
+    message.success('设定与梗概锁定已保存')
     syncJsonFromState()
   } catch (e: any) {
     message.error(e?.response?.data?.detail || '保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+const generatePremiseKnowledge = async () => {
+  generatingKnowledge.value = true
+  try {
+    const res = await knowledgeApi.generateKnowledge(props.slug)
+    message.success(res.message || '梗概已生成')
+    await loadPremiseLock()
+    window.dispatchEvent(new CustomEvent('aitext:knowledge:reload'))
+  } catch (e: any) {
+    message.error(e?.response?.data?.detail || 'AI 生成失败，请确认 API Key 已配置')
+  } finally {
+    generatingKnowledge.value = false
   }
 }
 
@@ -519,6 +598,7 @@ onMounted(() => {
   margin: 0 2px;
 }
 
+.bible-stat-premise.is-done,
 .bible-stat-style.is-done {
   color: #15803d;
 }
@@ -584,6 +664,37 @@ onMounted(() => {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+}
+
+.bcard-head-row {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.bcard-head-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.bcard-icon-lock {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4338ca;
+  background: rgba(67, 56, 202, 0.12);
+}
+
+.bible-inline-code {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.06);
+  color: #4338ca;
 }
 
 .bcard-icon {
