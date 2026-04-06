@@ -11,6 +11,11 @@ CREATE TABLE IF NOT EXISTS novels (
     current_stage TEXT DEFAULT 'planning',
     current_act INTEGER DEFAULT 0,
     current_chapter_in_act INTEGER DEFAULT 0,
+    max_auto_chapters INTEGER DEFAULT 50,
+    current_auto_chapters INTEGER DEFAULT 0,
+    last_chapter_tension INTEGER DEFAULT 0,
+    consecutive_error_count INTEGER DEFAULT 0,
+    current_beat_index INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -237,6 +242,10 @@ CREATE TABLE IF NOT EXISTS bible_characters (
     novel_id TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
+    mental_state TEXT DEFAULT 'NORMAL',
+    mental_state_reason TEXT DEFAULT '',
+    verbal_tic TEXT DEFAULT '',
+    idle_behavior TEXT DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE
@@ -456,3 +465,26 @@ CREATE TABLE IF NOT EXISTS chapter_style_scores (
 
 CREATE INDEX IF NOT EXISTS idx_chapter_style_scores_novel
     ON chapter_style_scores(novel_id, chapter_number);
+
+-- ========== 语义化快照系统（战役三 Task 12）==========
+-- Git-like 版本控制，只存指针不存正文深拷贝
+CREATE TABLE IF NOT EXISTS novel_snapshots (
+    id TEXT PRIMARY KEY,
+    novel_id TEXT NOT NULL,
+    parent_snapshot_id TEXT,
+    branch_name TEXT NOT NULL DEFAULT 'main',
+    trigger_type TEXT NOT NULL,  -- AUTO / MANUAL
+    name TEXT NOT NULL,
+    description TEXT,
+    chapter_pointers TEXT NOT NULL,  -- JSON: 章节 ID 列表
+    bible_state TEXT,  -- JSON: Bible 快照
+    foreshadow_state TEXT,  -- JSON: 伏笔账本快照
+    graph_state TEXT,  -- JSON: 知识图谱快照（可选）
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (novel_id) REFERENCES novels(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_snapshot_id) REFERENCES novel_snapshots(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_novel_snapshots_novel ON novel_snapshots(novel_id);
+CREATE INDEX IF NOT EXISTS idx_novel_snapshots_branch ON novel_snapshots(novel_id, branch_name);
+

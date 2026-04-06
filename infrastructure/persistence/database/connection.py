@@ -31,6 +31,117 @@ def _migrate_triples_columns(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_novels_columns_before_schema_script(conn: sqlite3.Connection) -> None:
+    """旧库在 executescript 之前补齐 novels 列，避免 IF NOT EXISTS 跳过建表后索引引用缺列失败。"""
+    cur = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='novels' LIMIT 1"
+    )
+    if cur.fetchone() is None:
+        return
+    cur = conn.execute("PRAGMA table_info(novels)")
+    cols = {row[1] for row in cur.fetchall()}
+    migrations = {
+        "author": "ALTER TABLE novels ADD COLUMN author TEXT DEFAULT '未知作者'",
+        "premise": "ALTER TABLE novels ADD COLUMN premise TEXT DEFAULT ''",
+        "target_chapters": "ALTER TABLE novels ADD COLUMN target_chapters INTEGER DEFAULT 0",
+        "created_at": (
+            "ALTER TABLE novels ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        ),
+        "updated_at": (
+            "ALTER TABLE novels ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+        ),
+        "autopilot_status": (
+            "ALTER TABLE novels ADD COLUMN autopilot_status TEXT DEFAULT 'stopped'"
+        ),
+        "current_stage": (
+            "ALTER TABLE novels ADD COLUMN current_stage TEXT DEFAULT 'planning'"
+        ),
+        "current_act": "ALTER TABLE novels ADD COLUMN current_act INTEGER DEFAULT 0",
+        "current_chapter_in_act": (
+            "ALTER TABLE novels ADD COLUMN current_chapter_in_act INTEGER DEFAULT 0"
+        ),
+        "max_auto_chapters": (
+            "ALTER TABLE novels ADD COLUMN max_auto_chapters INTEGER DEFAULT 50"
+        ),
+        "current_auto_chapters": (
+            "ALTER TABLE novels ADD COLUMN current_auto_chapters INTEGER DEFAULT 0"
+        ),
+        "last_chapter_tension": (
+            "ALTER TABLE novels ADD COLUMN last_chapter_tension INTEGER DEFAULT 0"
+        ),
+        "consecutive_error_count": (
+            "ALTER TABLE novels ADD COLUMN consecutive_error_count INTEGER DEFAULT 0"
+        ),
+        "current_beat_index": (
+            "ALTER TABLE novels ADD COLUMN current_beat_index INTEGER DEFAULT 0"
+        ),
+    }
+    for col, sql in migrations.items():
+        if col not in cols:
+            try:
+                conn.execute(sql)
+                logger.info("novels pre-schema migration: added column %s", col)
+            except sqlite3.OperationalError as e:
+                logger.warning("novels pre-schema migration skip %s: %s", col, e)
+    cur = conn.execute("PRAGMA table_info(novels)")
+    cols_after = {row[1] for row in cur.fetchall()}
+    if "slug" not in cols_after:
+        try:
+            conn.execute("ALTER TABLE novels ADD COLUMN slug TEXT")
+            logger.info("novels pre-schema migration: added column slug")
+        except sqlite3.OperationalError as e:
+            logger.warning("novels pre-schema migration skip slug: %s", e)
+    try:
+        conn.execute(
+            "UPDATE novels SET slug = id WHERE slug IS NULL OR trim(COALESCE(slug, '')) = ''"
+        )
+    except sqlite3.OperationalError as e:
+        logger.warning("novels slug backfill skip: %s", e)
+    conn.commit()
+
+
+def _apply_autopilot_v2_migrations(conn: sqlite3.Connection) -> None:
+    """为 novels 表补齐自动驾驶 v2 护城河字段（幂等）"""
+    cur = conn.execute("PRAGMA table_info(novels)")
+    cols = {row[1] for row in cur.fetchall()}
+    migrations = {
+        "max_auto_chapters": "ALTER TABLE novels ADD COLUMN max_auto_chapters INTEGER DEFAULT 50",
+        "current_auto_chapters": "ALTER TABLE novels ADD COLUMN current_auto_chapters INTEGER DEFAULT 0",
+        "last_chapter_tension": "ALTER TABLE novels ADD COLUMN last_chapter_tension INTEGER DEFAULT 0",
+        "consecutive_error_count": "ALTER TABLE novels ADD COLUMN consecutive_error_count INTEGER DEFAULT 0",
+        "current_beat_index": "ALTER TABLE novels ADD COLUMN current_beat_index INTEGER DEFAULT 0",
+    }
+    for col, sql in migrations.items():
+        if col not in cols:
+            try:
+                conn.execute(sql)
+                logger.info(f"Added column: {col}")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"Migration skip {col}: {e}")
+    conn.commit()
+
+
+def _apply_character_enhancements(conn: sqlite3.Connection) -> None:
+    """为 bible_characters 表补齐角色增强字段（Task 13/14）"""
+    cur = conn.execute("PRAGMA table_info(bible_characters)")
+    cols = {row[1] for row in cur.fetchall()}
+    migrations = {
+        "mental_state": "ALTER TABLE bible_characters ADD COLUMN mental_state TEXT DEFAULT 'NORMAL'",
+        "mental_state_reason": "ALTER TABLE bible_characters ADD COLUMN mental_state_reason TEXT DEFAULT ''",
+        "verbal_tic": "ALTER TABLE bible_characters ADD COLUMN verbal_tic TEXT DEFAULT ''",
+        "idle_behavior": "ALTER TABLE bible_characters ADD COLUMN idle_behavior TEXT DEFAULT ''",
+    }
+    for col, sql in migrations.items():
+        if col not in cols:
+            try:
+                conn.execute(sql)
+                logger.info(f"Added character field: {col}")
+            except sqlite3.OperationalError as e:
+                logger.warning(f"Character migration skip {col}: {e}")
+    conn.commit()
+
+
+
 def _ensure_triple_provenance_table(conn: sqlite3.Connection) -> None:
     """旧库补齐 triple_provenance 表（schema.sql 对新库已包含）。"""
     conn.execute(
@@ -100,6 +211,7 @@ class DatabaseConnection:
         # 读取 schema.sql 并执行
         schema_path = Path(__file__).parent / "schema.sql"
         if schema_path.exists():
+            _migrate_novels_columns_before_schema_script(conn)
             with open(schema_path, 'r', encoding='utf-8') as f:
                 schema_sql = f.read()
                 conn.executescript(schema_sql)
@@ -109,6 +221,8 @@ class DatabaseConnection:
             logger.warning(f"Schema file not found: {schema_path}")
 
         _migrate_triples_columns(conn)
+        _apply_autopilot_v2_migrations(conn)
+        _apply_character_enhancements(conn)
         _ensure_triple_provenance_table(conn)
         conn.close()
 

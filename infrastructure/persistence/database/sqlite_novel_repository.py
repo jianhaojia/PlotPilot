@@ -19,8 +19,14 @@ class SqliteNovelRepository(NovelRepository):
     def save(self, novel: Novel) -> None:
         """保存小说"""
         sql = """
-            INSERT INTO novels (id, title, slug, author, target_chapters, premise, autopilot_status, current_stage, current_act, current_chapter_in_act, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO novels (
+                id, title, slug, author, target_chapters, premise,
+                autopilot_status, current_stage, current_act, current_chapter_in_act,
+                max_auto_chapters, current_auto_chapters, last_chapter_tension,
+                consecutive_error_count, current_beat_index,
+                created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 slug = excluded.slug,
@@ -31,6 +37,11 @@ class SqliteNovelRepository(NovelRepository):
                 current_stage = excluded.current_stage,
                 current_act = excluded.current_act,
                 current_chapter_in_act = excluded.current_chapter_in_act,
+                max_auto_chapters = excluded.max_auto_chapters,
+                current_auto_chapters = excluded.current_auto_chapters,
+                last_chapter_tension = excluded.last_chapter_tension,
+                consecutive_error_count = excluded.consecutive_error_count,
+                current_beat_index = excluded.current_beat_index,
                 updated_at = excluded.updated_at
         """
         now = datetime.utcnow().isoformat()
@@ -38,10 +49,17 @@ class SqliteNovelRepository(NovelRepository):
         slug = novel_id  # 使用 novel_id 作为唯一 slug
         premise = getattr(novel, 'premise', '')
         author = getattr(novel, 'author', '未知作者')
-        autopilot_status = getattr(novel, 'autopilot_status', 'stopped')
-        current_stage = getattr(novel, 'current_stage', 'planning')
+        _ap = getattr(novel, 'autopilot_status', 'stopped')
+        autopilot_status = _ap.value if isinstance(_ap, AutopilotStatus) else _ap
+        _cs = getattr(novel, 'current_stage', 'planning')
+        current_stage = _cs.value if isinstance(_cs, NovelStage) else _cs
         current_act = getattr(novel, 'current_act', 0)
         current_chapter_in_act = getattr(novel, 'current_chapter_in_act', 0)
+        max_auto_chapters = getattr(novel, 'max_auto_chapters', 50)
+        current_auto_chapters = getattr(novel, 'current_auto_chapters', 0)
+        last_chapter_tension = getattr(novel, 'last_chapter_tension', 0)
+        consecutive_error_count = getattr(novel, 'consecutive_error_count', 0)
+        current_beat_index = getattr(novel, 'current_beat_index', 0)
 
         self.db.execute(sql, (
             novel_id,
@@ -54,6 +72,11 @@ class SqliteNovelRepository(NovelRepository):
             current_stage,
             current_act,
             current_chapter_in_act,
+            max_auto_chapters,
+            current_auto_chapters,
+            last_chapter_tension,
+            consecutive_error_count,
+            current_beat_index,
             now,
             now
         ))
@@ -72,21 +95,7 @@ class SqliteNovelRepository(NovelRepository):
         if not row:
             return None
 
-        # 转换枚举类型
-        autopilot_status = AutopilotStatus(row.get('autopilot_status', 'idle'))
-        current_stage = NovelStage(row.get('current_stage', 'macro_planning'))
-
-        return Novel(
-            id=novel_id,
-            title=row['title'],
-            author=row.get('author', '未知作者'),
-            target_chapters=row['target_chapters'],
-            premise=row.get('premise', ''),
-            autopilot_status=autopilot_status,
-            current_stage=current_stage,
-            current_act=row.get('current_act', 0),
-            current_chapter_in_act=row.get('current_chapter_in_act', 0)
-        )
+        return self._row_to_novel(novel_id, row)
 
     def get_by_slug(self, slug: str) -> Optional[Novel]:
         """根据 slug 获取小说"""
@@ -96,65 +105,50 @@ class SqliteNovelRepository(NovelRepository):
         if not row:
             return None
 
-        from domain.novel.value_objects.novel_id import NovelId
-
-        # 转换枚举类型
-        autopilot_status = AutopilotStatus(row.get('autopilot_status', 'idle'))
-        current_stage = NovelStage(row.get('current_stage', 'macro_planning'))
-
-        return Novel(
-            id=NovelId(row['id']),
-            title=row['title'],
-            author=row.get('author', '未知作者'),
-            target_chapters=row['target_chapters'],
-            premise=row.get('premise', ''),
-            autopilot_status=autopilot_status,
-            current_stage=current_stage,
-            current_act=row.get('current_act', 0),
-            current_chapter_in_act=row.get('current_chapter_in_act', 0)
-        )
+        return self._row_to_novel(NovelId(row['id']), row)
 
     def list_all(self) -> List[Novel]:
         """列出所有小说"""
         sql = "SELECT * FROM novels ORDER BY created_at DESC"
         rows = self.db.fetch_all(sql)
-
-        from domain.novel.value_objects.novel_id import NovelId
-        return [
-            Novel(
-                id=NovelId(row['id']),
-                title=row['title'],
-                author=row.get('author', '未知作者'),
-                target_chapters=row['target_chapters'],
-                premise=row.get('premise', ''),
-                autopilot_status=AutopilotStatus(row.get('autopilot_status', 'idle')),
-                current_stage=NovelStage(row.get('current_stage', 'macro_planning')),
-                current_act=row.get('current_act', 0),
-                current_chapter_in_act=row.get('current_chapter_in_act', 0)
-            )
-            for row in rows
-        ]
+        return [self._row_to_novel(NovelId(row['id']), row) for row in rows]
 
     def find_by_autopilot_status(self, status: str) -> List[Novel]:
         """根据自动驾驶状态查找小说列表"""
         sql = "SELECT * FROM novels WHERE autopilot_status = ? ORDER BY updated_at DESC"
         rows = self.db.fetch_all(sql, (status,))
+        return [self._row_to_novel(NovelId(row['id']), row) for row in rows]
 
-        from domain.novel.value_objects.novel_id import NovelId
-        return [
-            Novel(
-                id=NovelId(row['id']),
-                title=row['title'],
-                author=row.get('author', '未知作者'),
-                target_chapters=row['target_chapters'],
-                premise=row.get('premise', ''),
-                autopilot_status=AutopilotStatus(row.get('autopilot_status', 'idle')),
-                current_stage=NovelStage(row.get('current_stage', 'macro_planning')),
-                current_act=row.get('current_act', 0),
-                current_chapter_in_act=row.get('current_chapter_in_act', 0)
-            )
-            for row in rows
-        ]
+    def _row_to_novel(self, novel_id: NovelId, row: dict) -> Novel:
+        """将数据库行转换为 Novel 实体"""
+        raw_status = row.get('autopilot_status', 'stopped')
+        try:
+            autopilot_status = AutopilotStatus(raw_status)
+        except ValueError:
+            autopilot_status = AutopilotStatus.STOPPED
+
+        raw_stage = row.get('current_stage', 'planning')
+        try:
+            current_stage = NovelStage(raw_stage)
+        except ValueError:
+            current_stage = NovelStage.PLANNING
+
+        return Novel(
+            id=novel_id,
+            title=row['title'],
+            author=row.get('author', '未知作者'),
+            target_chapters=row.get('target_chapters', 0),
+            premise=row.get('premise', ''),
+            autopilot_status=autopilot_status,
+            current_stage=current_stage,
+            current_act=row.get('current_act', 0),
+            current_chapter_in_act=row.get('current_chapter_in_act', 0),
+            max_auto_chapters=row.get('max_auto_chapters', 50),
+            current_auto_chapters=row.get('current_auto_chapters', 0),
+            last_chapter_tension=row.get('last_chapter_tension', 0),
+            consecutive_error_count=row.get('consecutive_error_count', 0),
+            current_beat_index=row.get('current_beat_index', 0),
+        )
 
     def delete(self, novel_id: NovelId) -> None:
         """删除小说（级联删除所有关联数据）"""

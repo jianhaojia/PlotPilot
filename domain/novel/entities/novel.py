@@ -15,6 +15,7 @@ class NovelStage(str, Enum):
     WRITING = "writing"  # 写正文（节拍放大器）
     AUDITING = "auditing"  # 审计：文风、伏笔、图谱
     REVIEWING = "reviewing"  # 旧版兼容
+    PAUSED_FOR_REVIEW = "paused_for_review"  # 幕完成，等待人工确认
     COMPLETED = "completed"
 
 
@@ -40,6 +41,11 @@ class Novel(BaseEntity):
         current_stage: NovelStage = NovelStage.PLANNING,
         current_act: int = 0,
         current_chapter_in_act: int = 0,
+        max_auto_chapters: int = 50,
+        current_auto_chapters: int = 0,
+        last_chapter_tension: int = 0,
+        consecutive_error_count: int = 0,
+        current_beat_index: int = 0,
     ):
         super().__init__(id.value)
         self.novel_id = id  # 存储 NovelId 对象
@@ -55,6 +61,13 @@ class Novel(BaseEntity):
         self.current_stage = current_stage  # 当前阶段（状态机）
         self.current_act = current_act  # 当前幕号（从 0 开始）
         self.current_chapter_in_act = current_chapter_in_act  # 当前幕内章节号（从 0 开始）
+
+        # 护城河字段
+        self.max_auto_chapters = max_auto_chapters  # 成本控制上限
+        self.current_auto_chapters = current_auto_chapters  # 已生成章节数
+        self.last_chapter_tension = last_chapter_tension  # 上章张力值（1-10）
+        self.consecutive_error_count = consecutive_error_count  # 连续失败计数
+        self.current_beat_index = current_beat_index  # 当前节拍索引（断点续写）
 
     def add_chapter(self, chapter: Chapter) -> None:
         """添加章节（必须连续）"""

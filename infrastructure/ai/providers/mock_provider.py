@@ -1,5 +1,6 @@
 """Mock LLM Provider for testing without API keys"""
 import json
+import re
 from typing import AsyncIterator
 from domain.ai.value_objects.prompt import Prompt
 from domain.ai.value_objects.token_usage import TokenUsage
@@ -36,7 +37,27 @@ class MockProvider(LLMService):
         # Detect what kind of generation is requested based on prompt
         user_prompt = prompt.user.lower()
 
-        if "宏观结构" in user_prompt or "结构框架" in user_prompt or "部-卷-幕" in user_prompt:
+        # 幕级章节规划（user 中含「幕信息」与 JSON 模板里的 chapters，勿走下方「人物」分支）
+        if "幕信息" in prompt.user and '"chapters"' in prompt.user:
+            m = re.search(r"规划\s*(\d+)\s*个章节", prompt.user)
+            n_ch = int(m.group(1)) if m else 5
+            n_ch = min(20, max(3, n_ch))
+            content = json.dumps(
+                {
+                    "chapters": [
+                        {
+                            "number": i,
+                            "title": f"第{i}章（Mock）",
+                            "outline": f"本幕第{i}章的占位大纲，用于无 API Key 本地联调。",
+                            "characters": [],
+                            "locations": [],
+                        }
+                        for i in range(1, n_ch + 1)
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        elif "宏观结构" in user_prompt or "结构框架" in user_prompt or "部-卷-幕" in user_prompt:
             # Macro planning generation
             content = json.dumps({
                 "parts": [

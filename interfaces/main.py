@@ -32,7 +32,7 @@ from interfaces.api.v1.world import bible, cast, knowledge, knowledge_graph_rout
 from interfaces.api.v1.blueprint import continuous_planning_routes, beat_sheet_routes, story_structure
 
 # Engine module
-from interfaces.api.v1.engine import generation, context_intelligence
+from interfaces.api.v1.engine import generation, context_intelligence, autopilot_routes
 
 # Audit module
 from interfaces.api.v1.audit import chapter_review_routes, macro_refactor, chapter_element_routes
@@ -93,6 +93,7 @@ app.include_router(story_structure.router, prefix="/api/v1")
 # Engine module routes
 app.include_router(generation.router, prefix="/api/v1")
 app.include_router(context_intelligence.router, prefix="/api/v1")
+app.include_router(autopilot_routes.router, prefix="/api/v1")
 
 # Audit module routes
 app.include_router(chapter_review_routes.router)

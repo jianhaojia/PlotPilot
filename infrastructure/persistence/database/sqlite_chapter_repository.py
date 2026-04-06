@@ -91,12 +91,18 @@ class SqliteChapterRepository(ChapterRepository):
     def _row_to_chapter(self, row: dict) -> Chapter:
         """将数据库行转换为 Chapter 实体"""
         from domain.novel.value_objects.novel_id import NovelId
+        from domain.novel.entities.chapter import ChapterStatus
+        raw_status = row.get('status', 'draft')
+        try:
+            status = ChapterStatus(raw_status)
+        except ValueError:
+            status = ChapterStatus.DRAFT
         return Chapter(
             id=row['id'],
             novel_id=NovelId(row['novel_id']),
             number=row['number'],
             title=row['title'],
             content=row['content'],
-            outline=row.get('outline', ''),  # 读取 outline 字段
-            status=row['status']
+            outline=row.get('outline', ''),
+            status=status
         )

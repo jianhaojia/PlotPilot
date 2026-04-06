@@ -1,0 +1,123 @@
+"""启动自动驾驶守护进程（v2，全依赖注入 + 护城河）"""
+import sys
+import logging
+import time
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from application.paths import get_db_path, DATA_DIR
+from infrastructure.persistence.database.connection import get_database
+from infrastructure.persistence.database.sqlite_novel_repository import SqliteNovelRepository
+from infrastructure.persistence.database.sqlite_chapter_repository import SqliteChapterRepository
+from infrastructure.persistence.database.story_node_repository import StoryNodeRepository
+from infrastructure.persistence.database.chapter_element_repository import ChapterElementRepository
+from infrastructure.persistence.database.sqlite_foreshadowing_repository import SqliteForeshadowingRepository
+
+from application.engine.services.autopilot_daemon import AutopilotDaemon
+from application.engine.services.background_task_service import BackgroundTaskService
+from application.engine.services.circuit_breaker import CircuitBreaker
+from application.blueprint.services.continuous_planning_service import ContinuousPlanningService
+
+# 复用 API 层的工厂函数，保证与 FastAPI 层使用同一套配置
+from interfaces.api.dependencies import (
+    get_llm_service, get_context_builder, get_bible_service,
+    get_foreshadowing_repository, get_novel_repository, get_chapter_repository,
+)
+
+(DATA_DIR / "logs").mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+    handlers=[
+        logging.FileHandler(str(DATA_DIR / "logs" / "autopilot_daemon.log"), encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+
+def build_daemon() -> AutopilotDaemon:
+    db_path = get_db_path()
+    db = get_database(db_path)
+
+    novel_repo = SqliteNovelRepository(db)
+    chapter_repo = SqliteChapterRepository(db)
+    story_node_repo = StoryNodeRepository(db_path)
+    chapter_element_repo = ChapterElementRepository(db_path)
+    foreshadow_repo = SqliteForeshadowingRepository(db)
+
+    llm_service = get_llm_service()
+    context_builder = get_context_builder()
+
+    planning_service = ContinuousPlanningService(
+        story_node_repo=story_node_repo,
+        chapter_element_repo=chapter_element_repo,
+        llm_service=llm_service,
+        bible_service=get_bible_service(),
+        chapter_repository=chapter_repo,
+    )
+
+    # VoiceDriftService（可选，失败则跳过）
+    voice_drift_service = None
+    try:
+        from infrastructure.persistence.database.sqlite_voice_vault_repository import SqliteVoiceVaultRepository
+        from infrastructure.persistence.database.sqlite_voice_fingerprint_repository import SQLiteVoiceFingerprintRepository
+        from application.analyst.services.voice_drift_service import VoiceDriftService
+        score_repo = SqliteVoiceVaultRepository(db)
+        fingerprint_repo = SQLiteVoiceFingerprintRepository(db)
+        voice_drift_service = VoiceDriftService(score_repo, fingerprint_repo)
+        logger.info("VoiceDriftService 已启用")
+    except Exception as e:
+        logger.warning(f"VoiceDriftService 初始化失败，文风检测已禁用：{e}")
+
+    # TripleRepository（可选）
+    triple_repo = None
+    try:
+        from infrastructure.persistence.database.triple_repository import TripleRepository
+        triple_repo = TripleRepository(db_path)
+        logger.info("TripleRepository 已启用")
+    except Exception as e:
+        logger.warning(f"TripleRepository 不可用，图谱提取已禁用：{e}")
+
+    bg_service = BackgroundTaskService(
+        voice_drift_service=voice_drift_service,
+        llm_service=llm_service,
+        foreshadowing_repo=foreshadow_repo,
+        triple_repository=triple_repo,
+    )
+
+    circuit_breaker = CircuitBreaker(
+        failure_threshold=5,
+        reset_timeout=120,
+    )
+
+    return AutopilotDaemon(
+        novel_repository=novel_repo,
+        llm_service=llm_service,
+        context_builder=context_builder,
+        background_task_service=bg_service,
+        planning_service=planning_service,
+        story_node_repo=story_node_repo,
+        chapter_repository=chapter_repo,
+        poll_interval=5,
+        voice_drift_service=voice_drift_service,
+        circuit_breaker=circuit_breaker,
+    )
+
+
+if __name__ == "__main__":
+    logger.info("=" * 80)
+    logger.info("🚀 Autopilot Daemon v2 Starting")
+    logger.info("=" * 80)
+
+    daemon = build_daemon()
+    try:
+        daemon.run_forever()
+    except KeyboardInterrupt:
+        logger.info("守护进程已停止（KeyboardInterrupt）")
+    except Exception as e:
+        logger.error(f"守护进程异常退出：{e}", exc_info=True)
+        raise

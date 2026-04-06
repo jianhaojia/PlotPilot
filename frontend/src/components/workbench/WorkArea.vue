@@ -6,13 +6,18 @@
         <n-text depth="3" class="work-sub">{{ slug }}</n-text>
       </div>
       <n-space :size="8" align="center" wrap class="work-header-actions">
-        <n-button size="small" secondary @click="openHostedWriteModal">
-          托管连写
-        </n-button>
         <n-button type="primary" size="small" @click="showWorkflowModal = true" title="完整工作流：场景分析 + 流式生成 + 一致性检验，推荐">
           📖 工作流撰稿
         </n-button>
       </n-space>
+    </header>
+
+    <!-- 自动驾驶面板 -->
+    <div class="autopilot-container">
+      <AutopilotPanel :novel-id="slug" @status-change="handleAutopilotStatusChange" />
+    </div>
+
+    <header class="work-subheader">
     </header>
 
     <div class="work-main">
