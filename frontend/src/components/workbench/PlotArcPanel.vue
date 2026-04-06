@@ -10,11 +10,11 @@
           设计小说的<strong>情节张力曲线</strong>，规划起承转合的关键剧情点和节奏控制。
         </p>
       </div>
-      <n-space class="header-actions" :size="8" align="center">
-        <n-button size="small" secondary @click="showAddPointModal = true">
+      <n-space class="header-actions" :size="8" align="center" :wrap="false">
+        <n-button class="panel-header-btn" size="small" type="primary" secondary @click="showAddPointModal = true">
           + 添加剧情点
         </n-button>
-        <n-button size="small" type="primary" :loading="saving" @click="savePlotArc">
+        <n-button class="panel-header-btn" size="small" type="primary" :loading="saving" @click="savePlotArc">
           保存弧线
         </n-button>
       </n-space>
@@ -22,9 +22,19 @@
 
     <div class="panel-content">
       <n-spin :show="loading">
-        <n-empty v-if="plotPoints.length === 0" description="暂无剧情点，点击「添加剧情点」开始设计情节弧线">
+        <n-empty
+          v-if="plotPoints.length === 0"
+          class="panel-empty"
+          size="small"
+          description="暂无剧情点"
+        >
           <template #icon>
-            <span style="font-size: 48px">📈</span>
+            <span class="panel-empty-ico" aria-hidden="true">📈</span>
+          </template>
+          <template #extra>
+            <n-text depth="3" style="font-size: 12px; text-align: center; max-width: 280px">
+              点击「添加剧情点」标记开端/高潮等关键节点，保存后上方概览卡会显示张力曲线。
+            </n-text>
           </template>
         </n-empty>
 
@@ -83,24 +93,23 @@
             >
               <template #header>
                 <div class="point-header">
-                  <n-tag :type="getPointTypeColor(point.point_type)" size="small" round>
-                    {{ getPointTypeLabel(point.point_type) }}
-                  </n-tag>
-                  <n-text strong>第 {{ point.chapter_number }} 章</n-text>
-                  <n-tag :type="getTensionTypeColor(point.tension)" size="small">
-                    张力: {{ getTensionLabel(point.tension) }}
-                  </n-tag>
+                  <div class="point-header-main">
+                    <n-tag :type="getPointTypeColor(point.point_type)" size="small" round>
+                      {{ getPointTypeLabel(point.point_type) }}
+                    </n-tag>
+                    <n-text class="point-title" strong>第 {{ point.chapter_number }} 章</n-text>
+                    <n-tag :type="getTensionTypeColor(point.tension)" size="small" round>
+                      张力 {{ getTensionLabel(point.tension) }}
+                    </n-tag>
+                  </div>
+                  <n-space :size="6" class="point-header-actions" @click.stop>
+                    <n-button size="tiny" secondary @click="editPoint(index)">编辑</n-button>
+                    <n-button size="tiny" type="error" secondary @click="deletePoint(index)">删除</n-button>
+                  </n-space>
                 </div>
               </template>
 
-              <n-text>{{ point.description }}</n-text>
-
-              <template #action>
-                <n-space :size="8">
-                  <n-button size="tiny" secondary @click="editPoint(index)">编辑</n-button>
-                  <n-button size="tiny" type="error" secondary @click="deletePoint(index)">删除</n-button>
-                </n-space>
-              </template>
+              <n-text style="font-size: 13px; line-height: 1.55">{{ point.description }}</n-text>
             </n-card>
           </n-space>
         </div>
@@ -360,12 +369,12 @@ onMounted(() => {
 }
 
 .panel-header {
-  padding: 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--aitext-split-border);
   background: var(--app-surface);
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
 }
 
@@ -397,12 +406,38 @@ onMounted(() => {
 
 .header-actions {
   flex-shrink: 0;
+  align-items: center;
+}
+
+.panel-header-btn {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 12px !important;
+}
+
+.panel-empty {
+  padding: 12px 8px !important;
+  min-height: auto !important;
+}
+
+.panel-empty-ico {
+  font-size: 36px;
+  line-height: 1;
+  opacity: 0.9;
 }
 
 .panel-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 12px 16px;
+}
+
+.plot-arc-panel :deep(.tension-chart .n-card) {
+  overflow: visible;
+}
+
+.plot-arc-panel :deep(.tension-chart .n-card__content) {
+  padding: 8px 12px !important;
 }
 
 .plot-arc-container {
@@ -432,7 +467,27 @@ onMounted(() => {
 
 .point-header {
   display: flex;
-  gap: 8px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.point-header-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.point-title {
+  font-size: 14px;
+  margin: 0;
+}
+
+.point-header-actions {
+  flex-shrink: 0;
 }
 </style>

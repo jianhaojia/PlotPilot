@@ -10,11 +10,24 @@
           管理小说的<strong>主线、支线与暗线</strong>，规划故事线的起止章节和关键里程碑。
         </p>
       </div>
-      <n-space class="header-actions" :size="8" align="center">
-        <n-button size="small" secondary @click="openCreate">
+      <n-space class="header-actions" :size="8" align="center" :wrap="false">
+        <n-button
+          class="panel-header-btn"
+          size="small"
+          type="primary"
+          secondary
+          @click="openCreate"
+        >
           + 添加故事线
         </n-button>
-        <n-button size="small" type="primary" :loading="loading" @click="loadStorylines">
+        <n-button
+          class="panel-header-btn"
+          size="small"
+          quaternary
+          :loading="loading"
+          :disabled="loading"
+          @click="loadStorylines"
+        >
           刷新
         </n-button>
       </n-space>
@@ -22,9 +35,19 @@
 
     <div class="panel-content">
       <n-spin :show="loading">
-        <n-empty v-if="storylines.length === 0" description="暂无故事线，点击「添加故事线」开始规划">
+        <n-empty
+          v-if="storylines.length === 0"
+          class="panel-empty"
+          size="small"
+          description="暂无故事线"
+        >
           <template #icon>
-            <span style="font-size: 48px">📖</span>
+            <span class="panel-empty-ico" aria-hidden="true">📖</span>
+          </template>
+          <template #extra>
+            <n-text depth="3" style="font-size: 12px; text-align: center; max-width: 280px">
+              点击右上角「添加故事线」规划主线/支线，或从宏观规划流程中生成。
+            </n-text>
           </template>
         </n-empty>
 
@@ -38,12 +61,21 @@
           >
             <template #header>
               <div class="storyline-header">
-                <n-tag :type="getTypeColor(storyline.storyline_type)" size="small" round>
-                  {{ getTypeLabel(storyline.storyline_type) }}
-                </n-tag>
-                <n-tag :type="getStatusColor(storyline.status)" size="small" round>
-                  {{ getStatusLabel(storyline.status) }}
-                </n-tag>
+                <div class="storyline-header-main">
+                  <n-tag :type="getTypeColor(storyline.storyline_type)" size="small" round>
+                    {{ getTypeLabel(storyline.storyline_type) }}
+                  </n-tag>
+                  <n-text class="storyline-title" strong>
+                    {{ (storyline.name || '').trim() || `故事线 ${storyline.id.slice(0, 8)}` }}
+                  </n-text>
+                  <n-tag :type="getStatusColor(storyline.status)" size="small" round>
+                    {{ getStatusLabel(storyline.status) }}
+                  </n-tag>
+                </div>
+                <n-space :size="6" class="storyline-header-actions" @click.stop>
+                  <n-button size="tiny" secondary @click="editStoryline(storyline)">编辑</n-button>
+                  <n-button size="tiny" type="error" secondary @click="deleteStoryline(storyline.id)">删除</n-button>
+                </n-space>
               </div>
             </template>
 
@@ -53,13 +85,6 @@
                 <n-text>第 {{ storyline.estimated_chapter_start }} - {{ storyline.estimated_chapter_end }} 章</n-text>
               </div>
             </n-space>
-
-            <template #action>
-              <n-space :size="8">
-                <n-button size="tiny" secondary @click="editStoryline(storyline)">编辑</n-button>
-                <n-button size="tiny" type="error" secondary @click="deleteStoryline(storyline.id)">删除</n-button>
-              </n-space>
-            </template>
           </n-card>
         </n-space>
       </n-spin>
@@ -271,12 +296,12 @@ onMounted(() => {
 }
 
 .panel-header {
-  padding: 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--aitext-split-border);
   background: var(--app-surface);
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
 }
 
@@ -308,6 +333,13 @@ onMounted(() => {
 
 .header-actions {
   flex-shrink: 0;
+  align-items: center;
+}
+
+.panel-header-btn {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 12px !important;
 }
 
 .panel-content {
@@ -316,10 +348,44 @@ onMounted(() => {
   padding: 16px;
 }
 
+.panel-empty {
+  padding: 12px 8px !important;
+  min-height: auto !important;
+}
+
+.panel-empty-ico {
+  font-size: 36px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
 .storyline-header {
   display: flex;
-  gap: 8px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.storyline-header-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.storyline-title {
+  font-size: 14px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.storyline-header-actions {
+  flex-shrink: 0;
 }
 
 .info-row {
