@@ -264,3 +264,39 @@ async def run_manual_diagnosis(
         logger.error(f"Error running manual diagnosis for novel {novel_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
+@router.post("/{novel_id}/macro-refactor/diagnosis/{diagnosis_id}/resolve")
+async def mark_diagnosis_resolved(
+    novel_id: str,
+    diagnosis_id: str,
+    diagnosis_service: MacroDiagnosisService = Depends(get_macro_diagnosis_service)
+) -> Dict[str, Any]:
+    """
+    标记诊断结果为已解决。
+
+    已解决的诊断结果不会再注入到后续章节生成的提示词中。
+    适用于作者已处理完冲突断点（修复或确认忽略）的情况。
+
+    Args:
+        novel_id: 小说 ID
+        diagnosis_id: 诊断结果 ID
+        diagnosis_service: 宏观诊断服务
+
+    Returns:
+        {"success": true/false, "message": "..."}
+
+    Raises:
+        HTTPException: 500 if internal error occurs
+    """
+    try:
+        success = diagnosis_service.mark_resolved(novel_id, diagnosis_id, resolved_by="manual")
+        
+        if success:
+            return {"success": True, "message": "诊断结果已标记为已解决，不会再注入提示词"}
+        else:
+            return {"success": False, "message": "标记失败，请检查诊断结果 ID"}
+            
+    except Exception as e:
+        logger.error(f"Error marking diagnosis as resolved: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
