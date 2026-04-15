@@ -46,6 +46,17 @@ class FetchModelsRequest(BaseModel):
     base_url: str
 
 
+class TestConfigRequest(BaseModel):
+    provider: str
+    api_key: str
+    base_url: str
+
+
+class TestConfigResponse(BaseModel):
+    success: bool
+    message: str
+
+
 # ── endpoints ────────────────────────────────────────────────
 
 @router.get("/")
@@ -126,7 +137,75 @@ async def fetch_embedding_models(body: FetchModelsRequest):
     return await _fetch_openai_models(body.api_key, body.base_url)
 
 
+@router.post("/test")
+async def test_config(body: TestConfigRequest):
+    """测试 LLM 配置是否能成功连接"""
+    try:
+        if body.provider == "anthropic":
+            success = await _test_anthropic_config(body.api_key, body.base_url)
+        else:
+            success = await _test_openai_config(body.api_key, body.base_url)
+
+        if success:
+            return TestConfigResponse(success=True, message="连接成功")
+        else:
+            return TestConfigResponse(success=False, message="连接失败")
+    except Exception as exc:
+        logger.warning("test-config failed: %s", exc)
+        return TestConfigResponse(success=False, message=f"连接失败: {exc}")
+
+
 # ── helpers ─────────────────────────────────────────────────
+
+async def _test_openai_config(api_key: str, base_url: str) -> bool:
+    """测试 OpenAI 兼容配置"""
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "gpt-3.5-turbo",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 1
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        return True
+
+
+async def _test_anthropic_config(api_key: str, base_url: str) -> bool:
+    """测试 Anthropic 配置"""
+    base = (base_url or "https://api.anthropic.com").rstrip("/")
+    if base.endswith("/v1"):
+        url = f"{base}/messages"
+    else:
+        url = f"{base}/v1/messages"
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
+    }
+    payload = {
+        "model": "claude-3-haiku-20240307",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 1
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            return True
+    except Exception:
+        if not base_url:
+            raise
+        logger.info("Anthropic-style test failed, trying OpenAI-style")
+        fallback_base = base_url.rstrip("/")
+        if not fallback_base.endswith("/v1"):
+            fallback_base += "/v1"
+        return await _test_openai_config(api_key, fallback_base)
+
 
 async def _fetch_openai_models(api_key: str, base_url: str) -> List[str]:
     url = f"{base_url.rstrip('/')}/models"
