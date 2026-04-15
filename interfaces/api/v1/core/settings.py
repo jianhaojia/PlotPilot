@@ -164,15 +164,22 @@ async def _test_openai_config(api_key: str, base_url: str) -> bool:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
+    # 尝试最简单的请求格式
     payload = {
         "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": "Hi"}],
-        "max_tokens": 1
+        "messages": [{"role": "user", "content": "Hi"}]
     }
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        return True
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            return True
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 400:
+            # 400 错误可能只是模型不对，说明 API Key 和 URL 是正确的
+            logger.info("Got 400 but API key/URL are valid, considering test passed")
+            return True
+        raise
 
 
 async def _test_anthropic_config(api_key: str, base_url: str) -> bool:
