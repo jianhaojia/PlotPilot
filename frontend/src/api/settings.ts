@@ -54,4 +54,7 @@ export const settingsApi = {
 
   fetchEmbeddingModels: (data: { provider: string; api_key: string; base_url: string }) =>
     apiClient.post<string[]>('/settings/embedding/fetch-models', data),
+
+  testLLMConfig: (data: { provider: string; api_key: string; base_url: string }) =>
+    apiClient.post<{ success: boolean; message: string }>('/settings/llm-configs/test', data),
 }
