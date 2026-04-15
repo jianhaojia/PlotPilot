@@ -58,6 +58,14 @@
               </div>
               <div class="config-actions">
                 <n-button
+                  size="small"
+                  quaternary
+                  @click="handleTestConfig(cfg)"
+                  :loading="testingId === cfg.id"
+                >
+                  测试
+                </n-button>
+                <n-button
                   v-if="cfg.id !== activeId"
                   size="small"
                   type="success"
@@ -122,6 +130,14 @@
                   placeholder="选择或输入模型名称"
                   style="flex: 1"
                 />
+                <n-button
+                  size="small"
+                  :loading="testingConnection"
+                  :disabled="!form.api_key || !form.base_url"
+                  @click="handleTestConnection"
+                >
+                  测试连接
+                </n-button>
                 <n-button
                   size="small"
                   :loading="fetchingModels"
@@ -283,6 +299,7 @@ const activeId = ref<string | null>(null)
 const listLoading = ref(false)
 const activatingId = ref<string | null>(null)
 const deletingId = ref<string | null>(null)
+const testingId = ref<string | null>(null)
 
 async function loadConfigs() {
   listLoading.value = true
@@ -302,6 +319,7 @@ const editing = ref(false)
 const editingId = ref<string | null>(null)
 const saving = ref(false)
 const fetchingModels = ref(false)
+const testingConnection = ref(false)
 const modelOptions = ref<Array<{ label: string; value: string }>>([])
 
 const form = ref({
@@ -411,6 +429,46 @@ async function handleFetchModels() {
     message.error('获取模型列表失败，请检查 API Key 和 Base URL')
   } finally {
     fetchingModels.value = false
+  }
+}
+
+async function handleTestConfig(cfg: LLMConfigProfile) {
+  testingId.value = cfg.id
+  try {
+    const result = await settingsApi.testLLMConfig({
+      provider: cfg.provider,
+      api_key: cfg.api_key,
+      base_url: cfg.base_url
+    })
+    if (result.success) {
+      message.success('连接成功')
+    } else {
+      message.error(result.message || '连接失败')
+    }
+  } catch {
+    message.error('连接测试失败')
+  } finally {
+    testingId.value = null
+  }
+}
+
+async function handleTestConnection() {
+  testingConnection.value = true
+  try {
+    const result = await settingsApi.testLLMConfig({
+      provider: form.value.provider,
+      api_key: form.value.api_key,
+      base_url: form.value.base_url
+    })
+    if (result.success) {
+      message.success('连接成功')
+    } else {
+      message.error(result.message || '连接失败')
+    }
+  } catch {
+    message.error('连接测试失败')
+  } finally {
+    testingConnection.value = false
   }
 }
 
