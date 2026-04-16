@@ -7,11 +7,12 @@
 """
 from __future__ import annotations
 
+import json
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from application.ai.llm_json_extract import parse_llm_json_to_dict
 from domain.novel.value_objects.tension_dimensions import TensionDimensions
 
 
@@ -52,6 +53,31 @@ class TensionScoringLlmPayload(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def parse_json_from_response(rsp: str):
+    """从LLM响应中解析JSON，支持```json包裹格式"""
+    pattern = r"```json(.*?)```"
+    rsp_json = None
+    try:
+        match = re.search(pattern, rsp, re.DOTALL)
+        if match is not None:
+            try:
+                rsp_json = json.loads(match.group(1).strip())
+            except:
+                pass
+        else:
+            rsp_json = json.loads(rsp)
+        return rsp_json
+    except json.JSONDecodeError as e:
+        try:
+            match = re.search(r"\{(.*?)\}", rsp, re.DOTALL)
+            if match:
+                content = "{" + match.group(1) + "}"
+                return json.loads(content)
+        except:
+            pass
+        raise e
+
+
 def parse_tension_scoring_llm_response(
     raw: str,
 ) -> Tuple[Optional[TensionScoringLlmPayload], List[str]]:
@@ -60,9 +86,10 @@ def parse_tension_scoring_llm_response(
     Returns:
         (payload, []) 成功；  (None, [错误…]) 失败。
     """
-    data, errs = parse_llm_json_to_dict(raw)
-    if data is None:
-        return None, errs
+    try:
+        data = parse_json_from_response(raw)
+    except json.JSONDecodeError as e:
+        return None, [f"JSON parse failed: {str(e)}"]
     try:
         payload = TensionScoringLlmPayload.model_validate(data)
         return payload, []
