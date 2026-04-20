@@ -19,13 +19,7 @@
     <div class="step-content">
       <!-- Step 1: Generate Worldbuilding + Style -->
       <div v-if="currentStep === 1" class="step-panel">
-        <n-alert type="info" class="wizard-hint-alert" style="margin-bottom: 16px; width: 100%">
-          世界观与文风由后台多次调用 LLM 生成，<strong>常见耗时 2～10 分钟</strong>（慢模型、思考链或网关排队会更久）。
-          本向导<strong>单步界面最长等待约 {{ WIZARD_STEP_TIMEOUT_SECONDS }} 秒</strong>；若仍无结果，请到 <strong>AI 控制台</strong> 调大请求超时并检查网络与模型；关闭本窗口不会中断后台任务，可在工作台 Bible 继续查看或重试。
-        </n-alert>
-        <n-alert v-if="bibleError" type="error" style="margin-bottom: 16px; width: 100%">
-          <div class="wizard-error-text">{{ bibleError }}</div>
-        </n-alert>
+        <n-alert v-if="bibleError" type="error" :title="bibleError" style="margin-bottom: 16px" />
         <n-spin :show="generatingBible">
           <div v-if="!bibleGenerated" class="step-info">
             <n-icon size="48" color="#18a058">
@@ -95,12 +89,6 @@
 
       <!-- Step 2: Generate Characters -->
       <div v-else-if="currentStep === 2" class="step-panel">
-        <n-alert v-if="charactersError" type="error" style="margin-bottom: 16px; width: 100%">
-          {{ charactersError }}
-        </n-alert>
-        <n-alert type="info" class="wizard-hint-alert" style="margin-bottom: 16px; width: 100%">
-          与第 1 步相同，人物生成在后台跑 LLM；本步界面最长约 {{ WIZARD_STEP_TIMEOUT_SECONDS }} 秒，请耐心等待。超时或失败时可稍后在 Bible 中补全。
-        </n-alert>
         <n-spin :show="generatingCharacters">
           <div v-if="!charactersGenerated" class="step-info">
             <n-icon size="48" color="#2080f0">
@@ -131,12 +119,6 @@
 
       <!-- Step 3: Generate Locations -->
       <div v-else-if="currentStep === 3" class="step-panel">
-        <n-alert v-if="locationsError" type="error" style="margin-bottom: 16px; width: 100%">
-          {{ locationsError }}
-        </n-alert>
-        <n-alert type="info" class="wizard-hint-alert" style="margin-bottom: 16px; width: 100%">
-          地图与地点同样依赖 LLM；本步界面最长约 {{ WIZARD_STEP_TIMEOUT_SECONDS }} 秒。若卡住请先确认 API 未报错，再于工作台重试生成。
-        </n-alert>
         <n-spin :show="generatingLocations">
           <div v-if="!locationsGenerated" class="step-info">
             <n-icon size="48" color="#f0a020">
@@ -176,12 +158,7 @@
           <p>基于你已确认的世界观、人物与地图，系统推演三条可选<strong>主线方向</strong>。选定一条即可落库为「主线」；支线留到工作台再养。</p>
         </div>
 
-        <n-alert v-if="plotSuggestError" type="error" style="margin-bottom: 12px; width: 100%">
-          {{ plotSuggestError }}
-        </n-alert>
-        <n-alert type="info" class="wizard-hint-alert" style="margin-bottom: 12px; width: 100%">
-          主线候选为单次 LLM 推演，约需 1～5 分钟；本步请求最长约 {{ WIZARD_STEP_TIMEOUT_SECONDS }} 秒，超时请调大 AI 控制台中的请求超时或换更快模型，并点击「重新推演」。
-        </n-alert>
+        <n-alert v-if="plotSuggestError" type="error" :title="plotSuggestError" style="margin-bottom: 12px; width: 100%" />
         <n-alert v-if="mainPlotCommitted" type="success" title="已保存主线" style="margin-bottom: 12px; width: 100%">
           已进入本书的主故事线记录，可随时在工作台「设置 → 故事线」中修改。
         </n-alert>
@@ -268,10 +245,14 @@
 
     <template #footer>
       <n-space justify="space-between">
-        <n-button v-if="currentStep > 3 && currentStep < 5" @click="handleSkip">
-          跳过向导
-        </n-button>
-        <div v-else></div>
+        <n-space>
+          <n-button v-if="currentStep > 1" @click="handlePrev">
+            上一步
+          </n-button>
+          <n-button v-if="currentStep > 3 && currentStep < 5" @click="handleSkip">
+            跳过向导
+          </n-button>
+        </n-space>
         <n-space>
           <n-button
             v-if="(currentStep === 1 && bibleGenerated) || (currentStep === 2 && charactersGenerated) || (currentStep === 3 && locationsGenerated)"
@@ -294,7 +275,6 @@
 import { h, ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useMessage } from 'naive-ui'
 import { bibleApi, type BibleDTO, type StyleNoteDTO } from '@/api/bible'
-import { WIZARD_STEP_TIMEOUT_MS, WIZARD_STEP_TIMEOUT_SECONDS } from '@/constants/wizard'
 import { worldbuildingApi } from '@/api/worldbuilding'
 import { workflowApi, type MainPlotOptionDTO } from '@/api/workflow'
 import BibleLocationsGraphPreview from './BibleLocationsGraphPreview.vue'
@@ -384,7 +364,6 @@ function formatApiError(error: unknown): string {
   const e = error as {
     response?: { data?: { detail?: unknown } }
     message?: string
-    code?: string
   }
   const d = e?.response?.data?.detail
   if (typeof d === 'string') return d
@@ -394,15 +373,6 @@ function formatApiError(error: unknown): string {
   if (e?.message) return e.message
   return ''
 }
-
-/** 前端 axios / 浏览器常见超时形态（非模型专属，但用户常统称「超时」） */
-function isLikelyTimeoutError(error: unknown): boolean {
-  const text = `${formatApiError(error)} ${error instanceof Error ? error.message : ''} ${(error as { code?: string })?.code || ''}`
-  return /timeout|ECONNABORTED|ETIMEDOUT|aborted|超时/i.test(text)
-}
-
-/** 向导内：单阶段轮询 Bible 就绪的最长等待（与单步 HTTP 超时一致，默认 400s） */
-const WIZARD_BIBLE_POLL_DEADLINE_MS = WIZARD_STEP_TIMEOUT_MS
 
 const IconBook = () =>
   h(
@@ -457,6 +427,67 @@ const emit = defineEmits<{
   (e: 'skip'): void
 }>()
 
+/** localStorage 键名：按 novelId 隔离 */
+function getWizardProgressKey(novelId: string) {
+  return `novel-setup-wizard-progress-${novelId}`
+}
+
+interface WizardProgress {
+  currentStep: number
+  bibleGenerated: boolean
+  charactersGenerated: boolean
+  locationsGenerated: boolean
+  mainPlotCommitted: boolean
+  savedAt: number
+}
+
+/** 保存进度到 localStorage */
+function saveWizardProgress() {
+  const progress: WizardProgress = {
+    currentStep: currentStep.value,
+    bibleGenerated: bibleGenerated.value,
+    charactersGenerated: charactersGenerated.value,
+    locationsGenerated: locationsGenerated.value,
+    mainPlotCommitted: mainPlotCommitted.value,
+    savedAt: Date.now(),
+  }
+  try {
+    localStorage.setItem(getWizardProgressKey(props.novelId), JSON.stringify(progress))
+    console.log('[NovelSetupGuide] 进度已保存', progress)
+  } catch (e) {
+    console.warn('[NovelSetupGuide] 保存进度失败', e)
+  }
+}
+
+/** 从 localStorage 加载进度 */
+function loadWizardProgress(): WizardProgress | null {
+  try {
+    const raw = localStorage.getItem(getWizardProgressKey(props.novelId))
+    if (!raw) return null
+    const progress = JSON.parse(raw) as WizardProgress
+    // 24小时过期
+    if (Date.now() - progress.savedAt > 24 * 60 * 60 * 1000) {
+      clearWizardProgress()
+      return null
+    }
+    console.log('[NovelSetupGuide] 找到已保存的进度', progress)
+    return progress
+  } catch (e) {
+    console.warn('[NovelSetupGuide] 加载进度失败', e)
+    return null
+  }
+}
+
+/** 清除 localStorage 中的进度 */
+function clearWizardProgress() {
+  try {
+    localStorage.removeItem(getWizardProgressKey(props.novelId))
+    console.log('[NovelSetupGuide] 进度已清除')
+  } catch (e) {
+    console.warn('[NovelSetupGuide] 清除进度失败', e)
+  }
+}
+
 /** 与父组件 show 单一数据源，避免本地 visible 与 props 打架导致误 emit(false) 把向导关掉 */
 const modalOpen = computed({
   get: () => props.show,
@@ -485,16 +516,10 @@ const styleConventionDisplay = computed(() => styleConventionFromBible(bibleData
 // 第2步：生成人物和地点
 const generatingCharacters = ref(false)
 const charactersGenerated = ref(false)
-const charactersError = ref('')
 
 // 第3步：生成地点
 const generatingLocations = ref(false)
 const locationsGenerated = ref(false)
-const locationsError = ref('')
-
-/** 作废第 2/3 步后台轮询（关闭向导或重置时递增） */
-const step2PollEpoch = ref(0)
-const step3PollEpoch = ref(0)
 
 // Step 4：主线推演
 const plotOptions = ref<MainPlotOptionDTO[]>([])
@@ -515,11 +540,7 @@ async function loadPlotSuggestions() {
     const res = await workflowApi.suggestMainPlotOptions(props.novelId)
     plotOptions.value = res.plot_options || []
   } catch (e: unknown) {
-    let msg = formatApiError(e) || '推演失败，请重试'
-    if (isLikelyTimeoutError(e)) {
-      msg = `请求超时：本步前端最长等待约 ${WIZARD_STEP_TIMEOUT_SECONDS} 秒。主线推演依赖 LLM，请在 AI 控制台调大「超时（秒）」或换更快模型后，点击「重新推演」。`
-    }
-    plotSuggestError.value = msg
+    plotSuggestError.value = formatApiError(e) || '推演失败，请重试'
   } finally {
     plotSuggesting.value = false
   }
@@ -607,67 +628,17 @@ function clearPollTimer() {
 }
 
 /**
- * 轮询 Bible 直至满足条件或超时（用于第 2、3 步，避免无限转圈且无提示）。
- */
-function pollBibleUntil(
-  predicate: (bible: BibleDTO) => boolean,
-  options: {
-    isStale: () => boolean
-    onSuccess: () => void
-    onTimeout: () => void
-    onFatal: (message: string) => void
-    /** 轮询时顺带读后台任务失败态，避免 LLM 已报错但 Bible 仍为空导致一直转圈 */
-    watchBackendFailure?: boolean
-  },
-): void {
-  const startedAt = Date.now()
-
-  const tick = async () => {
-    if (options.isStale()) return
-    if (Date.now() - startedAt > WIZARD_BIBLE_POLL_DEADLINE_MS) {
-      options.onTimeout()
-      return
-    }
-    try {
-      const bible = await bibleApi.getBible(props.novelId, { timeout: WIZARD_STEP_TIMEOUT_MS })
-      if (options.isStale()) return
-      bibleData.value = bible
-      if (predicate(bible)) {
-        options.onSuccess()
-        return
-      }
-      if (options.watchBackendFailure) {
-        try {
-          const fb = await bibleApi.getBibleGenerationFeedback(props.novelId)
-          if (options.isStale()) return
-          if (fb.error) {
-            const stageHint = fb.stage ? `（阶段：${fb.stage}）` : ''
-            options.onFatal(`${fb.error}${stageHint}`)
-            return
-          }
-        } catch {
-          /* 反馈接口不可用时继续按 Bible 内容轮询 */
-        }
-      }
-    } catch (err: unknown) {
-      if (options.isStale()) return
-      options.onFatal(formatApiError(err) || '查询 Bible 失败')
-      return
-    }
-    window.setTimeout(() => {
-      void tick()
-    }, 2000)
-  }
-
-  void tick()
-}
-
-/**
  * 轮询：串行 setTimeout，避免 setInterval+async 叠请求。
  * 必须用 function 声明放在 watch 之前：`watch(..., { immediate: true })` 会同步调用回调，
  * `const startBibleGeneration = ...` 尚在暂存死区会导致运行时报错 / 逻辑异常。
  */
 async function startBibleGeneration() {
+  // 如果已经有进度且世界观已生成，跳过生成
+  if (bibleGenerated.value) {
+    console.log('[NovelSetupGuide] 从进度恢复，世界观已生成，跳过生成流程')
+    return
+  }
+
   clearGenerationTimers()
   biblePollEpoch.value += 1
   const epoch = biblePollEpoch.value
@@ -675,8 +646,44 @@ async function startBibleGeneration() {
   bibleError.value = ''
 
   try {
+    // 先检查是否已经有生成好的数据
+    try {
+      const existingBible = await bibleApi.getBible(props.novelId)
+      const hasContent = existingBible.style_notes?.length > 0 || existingBible.world_settings?.length > 0
+      if (hasContent) {
+        bibleStatusText.value = '检测到已生成内容，正在加载...'
+        console.log('[NovelSetupGuide] 发现已有 Bible 数据，直接加载')
+        clearGenerationTimers()
+        generatingBible.value = false
+
+        bibleData.value = existingBible
+        let fromApi = emptyWorldbuildingShape()
+        try {
+          const w = await worldbuildingApi.getWorldbuilding(props.novelId)
+          fromApi = normalizeWorldbuildingFromApi(w as unknown as Record<string, unknown>)
+        } catch {
+          /* 404 或未落库：仅用 Bible 五维扁平条目 */
+        }
+        const fromWs = worldbuildingFromWorldSettings(existingBible.world_settings)
+        worldbuildingData.value = mergeWorldbuildingDisplay(fromApi, fromWs)
+        bibleGenerated.value = true
+        bibleStatusText.value = '世界观生成完成！'
+        return
+      }
+    } catch {
+      // Bible 还不存在，继续生成流程
+      console.log('[NovelSetupGuide] 未发现已有 Bible 数据，开始生成')
+    }
+
     // 第1步：只生成世界观和文风
-    await bibleApi.generateBible(props.novelId, 'worldbuilding')
+    bibleStatusText.value = '正在请求生成世界观...'
+    try {
+      await bibleApi.generateBible(props.novelId, 'worldbuilding')
+    } catch (error: unknown) {
+      // 如果生成请求失败，可能是已经在生成中了，继续轮询
+      console.warn('[NovelSetupGuide] 生成请求失败，可能已在生成中，继续轮询:', error)
+    }
+
     if (biblePollEpoch.value !== epoch || !generatingBible.value) return
     bibleStatusText.value = '正在生成世界观和文风...'
 
@@ -689,17 +696,48 @@ async function startBibleGeneration() {
 
     const runPoll = async () => {
       if (biblePollEpoch.value !== epoch || !generatingBible.value) return
+
       try {
+        // 先尝试直接获取 Bible
+        try {
+          const bible = await bibleApi.getBible(props.novelId)
+          const hasContent = bible.style_notes?.length > 0 || bible.world_settings?.length > 0
+          if (hasContent) {
+            console.log('[NovelSetupGuide] 通过直接获取 Bible 检测到完成')
+            clearGenerationTimers()
+            generatingBible.value = false
+            bibleStatusText.value = '世界观生成完成！'
+
+            bibleData.value = bible
+            let fromApi = emptyWorldbuildingShape()
+            try {
+              const w = await worldbuildingApi.getWorldbuilding(props.novelId)
+              fromApi = normalizeWorldbuildingFromApi(w as unknown as Record<string, unknown>)
+            } catch {
+              /* 404 或未落库：仅用 Bible 五维扁平条目 */
+            }
+            const fromWs = worldbuildingFromWorldSettings(bible.world_settings)
+            worldbuildingData.value = mergeWorldbuildingDisplay(fromApi, fromWs)
+            bibleGenerated.value = true
+            return
+          }
+        } catch {
+          // Bible 还不存在，继续检查状态
+        }
+
+        // 检查状态
         const status = await bibleApi.getBibleStatus(props.novelId)
         if (biblePollEpoch.value !== epoch || !generatingBible.value) return
+
         if (status.ready) {
+          console.log('[NovelSetupGuide] 通过状态接口检测到完成')
           clearGenerationTimers()
           generatingBible.value = false
           bibleStatusText.value = '世界观生成完成！'
 
-          // 加载 Bible + 世界观：世界观接口失败时从 Bible.world_settings 回退
+          // 加载 Bible + 世界观
           try {
-            const bible = await bibleApi.getBible(props.novelId, { timeout: WIZARD_STEP_TIMEOUT_MS })
+            const bible = await bibleApi.getBible(props.novelId)
             bibleData.value = bible
             let fromApi = emptyWorldbuildingShape()
             try {
@@ -718,51 +756,75 @@ async function startBibleGeneration() {
           return
         }
       } catch (error: unknown) {
+        // 轮询出错不立即失败，继续重试
         if (biblePollEpoch.value !== epoch) return
-        clearGenerationTimers()
-        generatingBible.value = false
-        const detail = formatApiError(error)
-        bibleError.value =
-          detail || '检查状态失败（网络或后端不可用），请确认本机已启动 API 并刷新重试'
-        return
+        console.warn('[NovelSetupGuide] 轮询出错，继续重试:', error)
       }
+
       if (biblePollEpoch.value !== epoch || !generatingBible.value) return
       schedulePoll(2000)
     }
 
     timeoutTimerRef.value = window.setTimeout(() => {
       if (biblePollEpoch.value !== epoch) return
+      console.warn('[NovelSetupGuide] 生成超时')
       biblePollEpoch.value += 1
       clearGenerationTimers()
       generatingBible.value = false
-      bibleError.value = [
-        `本步等待超时（向导界面最多等待约 ${WIZARD_STEP_TIMEOUT_SECONDS} 秒）。`,
-        '常见原因：模型较慢、思考链、网关排队，或 AI 控制台里「超时」设得过短。',
-        '后台任务可能仍在执行——请到工作台打开 Bible 查看是否已生成；也可在 Bible 中手动触发生成/重试。',
-      ].join('\n')
-    }, WIZARD_BIBLE_POLL_DEADLINE_MS)
+      bibleError.value = '生成超时，请稍后在工作台手动重试，或刷新页面检查是否已完成'
+    }, 360000)
 
     schedulePoll(0)
   } catch (error: unknown) {
     if (biblePollEpoch.value !== epoch) return
+    console.error('[NovelSetupGuide] 生成流程异常:', error)
     generatingBible.value = false
-    let detail = formatApiError(error) || '生成失败，请重试'
-    if (isLikelyTimeoutError(error)) {
-      detail = [
-        '提交「世界观生成」时连接超时（常见于网络、代理或后端未就绪，不一定是模型本身）。',
-        '请确认 API 已启动；桌面版可稍等后端冷启动后再试。',
-        detail && !detail.includes('生成失败') ? `详情：${detail}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n')
-    }
-    bibleError.value = detail
+    const detail = formatApiError(error)
+    bibleError.value = detail || '生成失败，请重试'
   }
 }
 
-function resetWizardStateForOpen() {
-  step2PollEpoch.value += 1
-  step3PollEpoch.value += 1
+async function resetWizardStateForOpen() {
+  // 先尝试恢复进度
+  const savedProgress = loadWizardProgress()
+  if (savedProgress) {
+    // 恢复状态
+    currentStep.value = savedProgress.currentStep
+    bibleGenerated.value = savedProgress.bibleGenerated
+    charactersGenerated.value = savedProgress.charactersGenerated
+    locationsGenerated.value = savedProgress.locationsGenerated
+    mainPlotCommitted.value = savedProgress.mainPlotCommitted
+    stepStatus.value = 'process'
+    plotOptions.value = []
+    customMode.value = false
+    customLogline.value = ''
+    plotSuggestError.value = ''
+
+    // 如果已保存进度，先加载 Bible 数据
+    if (savedProgress.currentStep > 1 || savedProgress.bibleGenerated) {
+      try {
+        const bible = await bibleApi.getBible(props.novelId)
+        bibleData.value = bible
+        let fromApi = emptyWorldbuildingShape()
+        try {
+          const w = await worldbuildingApi.getWorldbuilding(props.novelId)
+          fromApi = normalizeWorldbuildingFromApi(w as unknown as Record<string, unknown>)
+        } catch {
+          /* 404 或未落库：仅用 Bible 五维扁平条目 */
+        }
+        const fromWs = worldbuildingFromWorldSettings(bible.world_settings)
+        worldbuildingData.value = mergeWorldbuildingDisplay(fromApi, fromWs)
+        console.log('[NovelSetupGuide] 已从保存的进度恢复并加载 Bible 数据')
+      } catch (e) {
+        console.warn('[NovelSetupGuide] 恢复进度时加载 Bible 失败', e)
+      }
+    }
+
+    message.info('检测到未完成的向导，已恢复进度')
+    return
+  }
+
+  // 没有保存的进度，重置为初始状态
   currentStep.value = 1
   stepStatus.value = 'process'
   plotOptions.value = []
@@ -770,23 +832,32 @@ function resetWizardStateForOpen() {
   customMode.value = false
   customLogline.value = ''
   plotSuggestError.value = ''
-  charactersError.value = ''
-  locationsError.value = ''
+  bibleGenerated.value = false
+  charactersGenerated.value = false
+  locationsGenerated.value = false
 }
 
 function stopGenerationOnClose() {
   biblePollEpoch.value += 1
-  step2PollEpoch.value += 1
-  step3PollEpoch.value += 1
   clearGenerationTimers()
   generatingBible.value = false
 }
 
+// 监听关键状态变化，自动保存进度
+watch(
+  [currentStep, bibleGenerated, charactersGenerated, locationsGenerated, mainPlotCommitted],
+  () => {
+    if (props.show) {
+      saveWizardProgress()
+    }
+  }
+)
+
 watch(
   () => props.show,
-  (val) => {
+  async (val) => {
     if (val) {
-      resetWizardStateForOpen()
+      await resetWizardStateForOpen()
       void startBibleGeneration()
     } else {
       stopGenerationOnClose()
@@ -794,9 +865,9 @@ watch(
   }
 )
 
-onMounted(() => {
+onMounted(async () => {
   if (props.show) {
-    resetWizardStateForOpen()
+    await resetWizardStateForOpen()
     void startBibleGeneration()
   }
 })
@@ -813,80 +884,128 @@ watch(currentStep, (step) => {
 
 const handleNext = async () => {
   if (currentStep.value === 1) {
-    step2PollEpoch.value += 1
-    const epoch2 = step2PollEpoch.value
+    // 进入第2步：生成人物
     currentStep.value = 2
+
+    // 如果从进度恢复且人物已生成，跳过生成
+    if (charactersGenerated.value) {
+      console.log('[NovelSetupGuide] 从进度恢复，人物已生成，跳过生成流程')
+      return
+    }
+
     generatingCharacters.value = true
-    charactersGenerated.value = false
-    charactersError.value = ''
+
+    // 先检查是否已经有人物了
     try {
-      await bibleApi.generateBible(props.novelId, 'characters')
-      pollBibleUntil(
-        (b) => (b.characters?.length ?? 0) > 0,
-        {
-          isStale: () =>
-            step2PollEpoch.value !== epoch2 || currentStep.value !== 2 || !generatingCharacters.value,
-          watchBackendFailure: true,
-          onSuccess: () => {
+      const existingBible = await bibleApi.getBible(props.novelId)
+      if (existingBible.characters && existingBible.characters.length > 0) {
+        console.log('[NovelSetupGuide] 发现已有人物数据，直接加载')
+        bibleData.value = existingBible
+        generatingCharacters.value = false
+        charactersGenerated.value = true
+        return
+      }
+    } catch {
+      // 继续生成流程
+    }
+
+    try {
+      try {
+        await bibleApi.generateBible(props.novelId, 'characters')
+      } catch (error) {
+        console.warn('[NovelSetupGuide] 人物生成请求失败，可能已在生成中:', error)
+      }
+
+      // 轮询检查人物生成状态
+      let attempts = 0
+      const maxAttempts = 180 // 6分钟
+      const checkCharacters = async () => {
+        try {
+          const bible = await bibleApi.getBible(props.novelId)
+          bibleData.value = bible
+          if (bible.characters && bible.characters.length > 0) {
             generatingCharacters.value = false
             charactersGenerated.value = true
-          },
-          onTimeout: () => {
-            generatingCharacters.value = false
-            charactersError.value = `等待人物生成超时（约 ${WIZARD_STEP_TIMEOUT_SECONDS} 秒）。后台可能仍在跑——请到工作台 Bible 查看；若无数据可返回上一步再进入本步重试，或在 Bible 手动生成。`
-            message.warning('人物生成超时')
-          },
-          onFatal: (msg) => {
-            generatingCharacters.value = false
-            charactersError.value = msg
-            message.error(msg)
-          },
-        },
-      )
-    } catch (error: unknown) {
+            return
+          }
+        } catch (error) {
+          console.warn('[NovelSetupGuide] 检查人物状态出错:', error)
+        }
+
+        attempts++
+        if (attempts < maxAttempts) {
+          window.setTimeout(checkCharacters, 2000)
+        } else {
+          console.error('[NovelSetupGuide] 人物生成超时')
+          generatingCharacters.value = false
+        }
+      }
+      await checkCharacters()
+    } catch (error) {
       console.error('Failed to generate characters:', error)
       generatingCharacters.value = false
-      charactersError.value = isLikelyTimeoutError(error)
-        ? '提交人物生成超时，请检查网络与 API 后再试。'
-        : formatApiError(error) || '人物生成启动失败'
     }
   } else if (currentStep.value === 2) {
-    step3PollEpoch.value += 1
-    const epoch3 = step3PollEpoch.value
+    // 进入第3步：生成地点
     currentStep.value = 3
+
+    // 如果从进度恢复且地点已生成，跳过生成
+    if (locationsGenerated.value) {
+      console.log('[NovelSetupGuide] 从进度恢复，地点已生成，跳过生成流程')
+      return
+    }
+
     generatingLocations.value = true
-    locationsGenerated.value = false
-    locationsError.value = ''
+
+    // 先检查是否已经有地点了
     try {
-      await bibleApi.generateBible(props.novelId, 'locations')
-      pollBibleUntil(
-        (b) => (b.locations?.length ?? 0) > 0,
-        {
-          isStale: () =>
-            step3PollEpoch.value !== epoch3 || currentStep.value !== 3 || !generatingLocations.value,
-          watchBackendFailure: true,
-          onSuccess: () => {
+      const existingBible = await bibleApi.getBible(props.novelId)
+      if (existingBible.locations && existingBible.locations.length > 0) {
+        console.log('[NovelSetupGuide] 发现已有地点数据，直接加载')
+        bibleData.value = existingBible
+        generatingLocations.value = false
+        locationsGenerated.value = true
+        return
+      }
+    } catch {
+      // 继续生成流程
+    }
+
+    try {
+      try {
+        await bibleApi.generateBible(props.novelId, 'locations')
+      } catch (error) {
+        console.warn('[NovelSetupGuide] 地点生成请求失败，可能已在生成中:', error)
+      }
+
+      // 轮询检查地点生成状态
+      let attempts = 0
+      const maxAttempts = 180 // 6分钟
+      const checkLocations = async () => {
+        try {
+          const bible = await bibleApi.getBible(props.novelId)
+          bibleData.value = bible
+          if (bible.locations && bible.locations.length > 0) {
             generatingLocations.value = false
             locationsGenerated.value = true
-          },
-          onTimeout: () => {
-            generatingLocations.value = false
-            locationsError.value = `等待地图生成超时（约 ${WIZARD_STEP_TIMEOUT_SECONDS} 秒）。请到工作台 Bible 查看地点是否已写入，或稍后重试。`
-            message.warning('地图生成超时')
-          },
-          onFatal: (msg) => {
-            generatingLocations.value = false
-            locationsError.value = msg
-            message.error(msg)
-          },
-        },
-      )
-    } catch (error: unknown) {
+            return
+          }
+        } catch (error) {
+          console.warn('[NovelSetupGuide] 检查地点状态出错:', error)
+        }
+
+        attempts++
+        if (attempts < maxAttempts) {
+          window.setTimeout(checkLocations, 2000)
+        } else {
+          console.error('[NovelSetupGuide] 地点生成超时')
+          generatingLocations.value = false
+        }
+      }
+      await checkLocations()
+    } catch (error) {
       console.error('Failed to generate locations:', error)
       generatingLocations.value = false
-      locationsError.value = isLikelyTimeoutError(error)
-        ? '提交地图生成超时，请检查网络与 API 后再试。'
-        : formatApiError(error) || '地图生成启动失败'
     }
   } else if (currentStep.value < 5) {
     currentStep.value++
@@ -894,17 +1013,24 @@ const handleNext = async () => {
 }
 
 const handleSkip = () => {
-  if (!confirm('确认退出向导？当前修改将不会保存。')) return
+  if (!confirm('确认退出向导？当前进度已自动保存，下次打开向导时可继续。')) return
   emit('skip')
   emit('update:show', false)
 }
 
 const requestClose = () => {
-  if (!confirm('确认退出向导？当前修改将不会保存。')) return
+  if (!confirm('确认退出向导？当前进度已自动保存，下次打开向导时可继续。')) return
   emit('update:show', false)
 }
 
+const handlePrev = () => {
+  if (currentStep.value > 1) {
+    currentStep.value--
+  }
+}
+
 const handleComplete = () => {
+  clearWizardProgress()
   emit('complete')
   emit('update:show', false)
 }
@@ -956,17 +1082,6 @@ const handleComplete = () => {
 .plot-options-block,
 .plot-custom-block {
   width: 100%;
-}
-
-.wizard-error-text {
-  white-space: pre-line;
-  line-height: 1.65;
-  font-size: 13px;
-}
-
-.wizard-hint-alert {
-  line-height: 1.55;
-  text-align: left;
 }
 
 .plot-option-title {

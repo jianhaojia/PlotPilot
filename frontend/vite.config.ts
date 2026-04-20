@@ -14,6 +14,9 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  optimizeDeps: {
+    exclude: ['@tauri-apps/api/core'],
+  },
   server: {
     port: 3000,
     host: '127.0.0.1',

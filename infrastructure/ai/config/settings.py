@@ -16,7 +16,7 @@ class Settings:
     api_key: Optional[str] = None
     #: 兼容自建/转发网关，与官方 provider base_url 一致；未设则走官方默认
     base_url: Optional[str] = None
-    timeout_seconds: float = 300.0
+    timeout_seconds: float = 600.0
     extra_headers: dict[str, str] = field(default_factory=dict)
     extra_query: dict[str, Any] = field(default_factory=dict)
     extra_body: dict[str, Any] = field(default_factory=dict)

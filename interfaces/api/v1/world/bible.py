@@ -14,11 +14,6 @@ from interfaces.api.dependencies import (
     get_auto_knowledge_generator
 )
 from domain.shared.exceptions import EntityNotFoundError
-from application.world.bible_generation_state import (
-    clear_bible_generation_state,
-    get_bible_generation_state,
-    record_bible_generation_failure,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +172,6 @@ async def generate_bible(
         import sys
         print(f"[TASK START] Bible generation for {novel_id}, stage={stage}", file=sys.stderr, flush=True)
         logger.info(f"Starting Bible generation task for {novel_id}, stage={stage}")
-        clear_bible_generation_state(novel_id)
         try:
             # 获取小说信息（需要 premise 和 target_chapters）
             from interfaces.api.dependencies import get_novel_service
@@ -185,7 +179,6 @@ async def generate_bible(
             novel = novel_service.get_novel(novel_id)
             if not novel:
                 logger.error(f"Novel not found: {novel_id}")
-                record_bible_generation_failure(novel_id, stage, "小说不存在，无法生成 Bible")
                 return
 
             # 使用 premise（故事梗概）生成 Bible，如果没有则使用 title
@@ -199,21 +192,28 @@ async def generate_bible(
                 stage=stage
             )
 
-            # 构建 Bible 摘要供 Knowledge 生成使用
-            chars = bible_data.get("characters", [])
-            locs = bible_data.get("locations", [])
-            char_desc = "、".join(f"{c['name']}（{c.get('role', '')}）" for c in chars[:5])
-            loc_desc = "、".join(c['name'] for c in locs[:3])
-            bible_summary = f"主要角色：{char_desc}。重要地点：{loc_desc}。文风：{bible_data.get('style', '')}。"
+            # 只在世界观生成阶段生成一次知识，避免重复调用
+            if stage == "worldbuilding":
+                # 构建 Bible 摘要供 Knowledge 生成使用
+                chars = bible_data.get("characters", [])
+                locs = bible_data.get("locations", [])
+                char_desc = "、".join(f"{c['name']}（{c.get('role', '')}）" for c in chars[:5])
+                loc_desc = "、".join(c['name'] for c in locs[:3])
+                bible_summary = f"主要角色：{char_desc}。重要地点：{loc_desc}。文风：{bible_data.get('style', '')}。"
 
-            # 生成初始 Knowledge
-            await knowledge_generator.generate_and_save(
-                novel_id,
-                novel.title,
-                bible_summary
-            )
-            logger.info(f"Bible and Knowledge generated successfully for {novel_id}")
-            clear_bible_generation_state(novel_id)
+                # 生成初始 Knowledge（添加错误处理，避免小说被删除时报错）
+                try:
+                    await knowledge_generator.generate_and_save(
+                        novel_id,
+                        novel.title,
+                        bible_summary
+                    )
+                    logger.info(f"Bible and Knowledge generated successfully for {novel_id}")
+                except Exception as e:
+                    logger.warning(f"Knowledge generation skipped or failed for {novel_id}: {e}")
+                    # 知识生成失败不影响世界观已完成的状态
+            else:
+                logger.info(f"Bible generation completed for {novel_id} (stage: {stage}), skipping knowledge generation (already generated)")
         except Exception as e:
             import sys
             import traceback
@@ -221,7 +221,6 @@ async def generate_bible(
             traceback.print_exc(file=sys.stderr)
             logger.error(f"Failed to generate Bible/Knowledge for {novel_id}: {e}")
             logger.error(traceback.format_exc())
-            record_bible_generation_failure(novel_id, stage, str(e))
 
     background_tasks.add_task(_generate_task)
 
@@ -252,20 +251,6 @@ async def create_bible(
 
 
 # 注意：必须先注册比 `/novels/{id}/bible` 更长的路径，避免与 `{novel_id}` 匹配歧义
-@router.get("/novels/{novel_id}/bible/generation-feedback")
-async def get_bible_generation_feedback(novel_id: str):
-    """新书向导轮询用：最近一次 Bible 异步生成失败原因（成功或未失败时为 null）。"""
-    state = get_bible_generation_state(novel_id)
-    if not state:
-        return {"novel_id": novel_id, "error": None, "stage": None, "at": None}
-    return {
-        "novel_id": novel_id,
-        "error": state.get("error"),
-        "stage": state.get("stage"),
-        "at": state.get("at"),
-    }
-
-
 @router.get("/novels/{novel_id}/bible/status")
 async def get_bible_status(
     novel_id: str,

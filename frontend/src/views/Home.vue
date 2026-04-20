@@ -238,6 +238,19 @@
                       <span>{{ formatWordCount(book.word_count) }}</span>
                     </template>
                   </div>
+                  <!-- 设置向导按钮 -->
+                  <div class="continue-setup-bar">
+                    <n-button
+                      size="small"
+                      :type="hasUnfinishedWizard(book.slug) ? 'primary' : 'default'"
+                      @click.stop="openWizardForBook(book)"
+                    >
+                      <template #icon>
+                        <n-icon><IconChevronRight /></n-icon>
+                      </template>
+                      {{ hasUnfinishedWizard(book.slug) ? '继续设置' : '设置向导' }}
+                    </n-button>
+                  </div>
                   <div class="card-actions" @click.stop>
                     <n-checkbox
                       :checked="selectedBooks.includes(book.slug)"
@@ -380,6 +393,19 @@
                 <span>{{ formatWordCount(book.word_count) }}</span>
               </template>
             </div>
+            <!-- 设置向导按钮 -->
+            <div class="continue-setup-bar">
+              <n-button
+                size="small"
+                :type="hasUnfinishedWizard(book.slug) ? 'primary' : 'default'"
+                @click.stop="openWizardForBook(book); showAllModal = false"
+              >
+                <template #icon>
+                  <n-icon><IconChevronRight /></n-icon>
+                </template>
+                {{ hasUnfinishedWizard(book.slug) ? '继续设置' : '设置向导' }}
+              </n-button>
+            </div>
             <div class="card-actions" @click.stop>
               <n-popconfirm
                 positive-text="删除"
@@ -440,6 +466,10 @@ const IconChevronDown = () =>
 const IconChevronUp = () =>
   h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
     h('path', { fill: 'currentColor', d: 'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z' }))
+
+const IconChevronRight = () =>
+  h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
+    h('path', { fill: 'currentColor', d: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z' }))
 
 interface BookListItem {
   slug: string
@@ -682,7 +712,21 @@ const handleSetupSkip = () => {
   if (id) router.push(`/book/${id}/workbench`)
 }
 
+const openWizardForBook = async (book: BookListItem) => {
+  try {
+    // 获取小说信息，拿到 target_chapters
+    const novel = await novelApi.getNovel(book.slug)
+    setupWizard.value = {
+      novelId: book.slug,
+      targetChapters: novel.target_chapters || 100,
+    }
+  } catch (e) {
+    message.error('打开向导失败')
+  }
+}
+
 const navigateToBook = (slug: string) => {
+  // 点击卡片直接进入工作台
   router.push(`/book/${slug}/workbench`)
 }
 
@@ -761,6 +805,25 @@ const focusCreateInput = () => {
 const handleRefreshList = async () => {
   await fetchBooks()
   message.success('列表已刷新')
+}
+
+/** 检查小说是否有未完成的向导进度 */
+const hasUnfinishedWizard = (novelId: string): boolean => {
+  try {
+    const key = `novel-setup-wizard-progress-${novelId}`
+    const raw = localStorage.getItem(key)
+    if (!raw) return false
+    const progress = JSON.parse(raw)
+    // 24小时过期
+    if (Date.now() - progress.savedAt > 24 * 60 * 60 * 1000) {
+      localStorage.removeItem(key)
+      return false
+    }
+    // 只有在第5步之前才算未完成
+    return progress.currentStep < 5
+  } catch {
+    return false
+  }
 }
 
 const getStageType = (stage: string) => {
@@ -1161,6 +1224,16 @@ onMounted(() => {
   color: var(--app-text-muted);
   margin-bottom: 12px;
   flex: 1;
+}
+
+.continue-setup-bar {
+  margin: 8px 0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.continue-setup-bar .n-button {
+  width: 100%;
 }
 
 /* 卡片操作按钮 */

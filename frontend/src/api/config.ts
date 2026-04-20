@@ -28,7 +28,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 120000,
+  timeout: 600000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -40,7 +40,7 @@ export const apiAxios = axiosInstance
 /** 旧版 /api 路由（book、jobs），与 v1 共用主机 */
 export const legacyBookHttp = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 600000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -50,7 +50,7 @@ legacyBookHttp.interceptors.response.use(response => response.data)
 /** 旧版 /api/stats，带 SuccessResponse 解包 */
 export const legacyStatsHttp = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 600000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -108,15 +108,23 @@ async function initTauriConnection(): Promise<void> {
  */
 export async function initApiClient(): Promise<void> {
   let port: number | null = null
-  try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const p = await invoke<number>('get_backend_port')
-    if (p && p > 0) {
-      port = p
-    }
-  } catch {
-    // 浏览器 / 无 IPC
-  }
+  // 暂时禁用 Tauri 检测 - 仅浏览器模式
+  // 浏览器环境下跳过 Tauri 检测
+  // if (typeof window !== 'undefined') {
+  //   const w = window as Window & { __TAURI__?: unknown; __TAURI_INTERNALS__?: unknown }
+  //   if (w.__TAURI__ || w.__TAURI_INTERNALS__) {
+  //     try {
+  //       // @ts-ignore - Tauri is optional, only used in desktop builds
+  //       const { invoke } = await import(/* @vite-ignore */ '@tauri-apps/api/core')
+  //       const p = await invoke<number>('get_backend_port')
+  //       if (p && p > 0) {
+  //         port = p
+  //       }
+  //     } catch {
+  //       // 浏览器 / 无 IPC
+  //     }
+  //   }
+  // }
 
   if (port != null) {
     axiosInstance.defaults.baseURL = `http://127.0.0.1:${port}/api/v1`
